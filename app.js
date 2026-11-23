@@ -13,14 +13,27 @@ const WEEKORDE = [1, 2, 3, 4, 5, 6, 0];
 const MOODS = ['😩', '😕', '😐', '🙂', '🤩'];
 const TITELS = ['Starter', 'Opstarter', 'Volhouder', 'Doorzetter', 'Machine', 'Onbreekbaar', 'Legende'];
 const THEMAS = [
-  { id: 'ijs', naam: 'IJs', sub: 'licht & helder blauw', bg: '#F2F6FB', kaart: '#FFFFFF', acc: '#2F86F6', ext: '#FF7A45' },
   { id: 'middernacht', naam: 'Middernacht', sub: 'zwart met blauw', bg: '#000000', kaart: '#18191E', acc: '#3D9BFF', ext: '#FF8A3D' },
+  { id: 'ijs', naam: 'IJs', sub: 'licht & helder blauw', bg: '#F2F6FB', kaart: '#FFFFFF', acc: '#2F86F6', ext: '#FF7A45' },
   { id: 'oceaan', naam: 'Oceaan', sub: 'donker petrol & mint', bg: '#061315', kaart: '#132B2F', acc: '#2DD4BF', ext: '#FBBF24' },
   { id: 'zand', naam: 'Zand', sub: 'warm & rustig', bg: '#F5EFE5', kaart: '#FFFBF4', acc: '#CF5F38', ext: '#A86F12' },
   { id: 'papier', naam: 'Papier', sub: 'zwart-wit, minimaal', bg: '#FAFAF7', kaart: '#FFFFFF', acc: '#111111', ext: '#FF6B00' }
 ];
+const PALETTEN = {
+  middernacht: ['#3D9BFF', '#6CB8FF', '#2B6FE8', '#9BD0FF', '#4F82FF', '#5CC6F2', '#A8B6CC'],
+  ijs: ['#2F86F6', '#4FB0FF', '#1F5FD1', '#6CA8FF', '#3B6BF0', '#22A6D6', '#7C8DB0'],
+  oceaan: ['#2DD4BF', '#38BDF8', '#5EEAD4', '#22B8CF', '#7DD3FC', '#34D399', '#9CC9C3'],
+  zand: ['#CF5F38', '#A86F12', '#8C6A4F', '#3B7A8C', '#B5543A', '#7D8C5A', '#C08457'],
+  papier: ['#111111', '#3A3A3A', '#5E5E5E', '#1C7ED6', '#2B2B2B', '#7A7A7A', '#474747']
+};
+function palet() { return PALETTEN[state.inst.thema] || PALETTEN.middernacht; }
+function kleurVan(h) {
+  let i = KLEUREN.indexOf(h.kleur);
+  if (i < 0) i = [...String(h.id)].reduce((s, c) => s + c.charCodeAt(0), 0) % KLEUREN.length; // oude kleuren netjes verdelen
+  return palet()[i];
+}
 function pasThemaToe() {
-  const t = THEMAS.find(x => x.id === state.inst.thema) || THEMAS[0];
+  const t = THEMAS.find(x => x.id === state.inst.thema) || THEMAS.find(x => x.id === 'middernacht');
   document.documentElement.dataset.thema = t.id;
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.bg);
 }
@@ -84,7 +97,7 @@ function nieuweState() {
   return {
     versie: 1, gewoontes: [], log: {}, taken: [], dagboek: {}, uitdaging: null, geschiedenis: [],
     coach: [], gemeld: {}, lv: 1, tellers: {}, focus: null, focusLog: [], reviews: {}, bijgewerkt: 0,
-    inst: { ai: 'lokaal', meldingen: false, avond: '21:00', thema: 'ijs' }
+    inst: { ai: 'lokaal', meldingen: false, avond: '21:00', thema: 'middernacht' }
   };
 }
 function vanJSON(s) { const st = Object.assign(nieuweState(), s); st.inst = Object.assign(nieuweState().inst, s.inst); return st; }
@@ -356,7 +369,7 @@ function starterKaart() {
 function habRij(h, dag, gisterenGemist) {
   const s = status(h, dag), t = vandaag(), toekomst = dag > t, st = streak(h);
   const n = teller(h, dag), metDoel = h.doel > 1 && s === 'open' && !toekomst;
-  return `<div class="hab st-${s}" style="--c:${h.kleur}">
+  return `<div class="hab st-${s}" style="--c:${kleurVan(h)}">
     <div class="hab-emo">${esc(h.emoji)}</div>
     <div class="hab-main" data-act="habdetail" data-id="${h.id}" data-dag="${dag}">
       <div class="hab-naam">${esc(h.naam)}</div>
@@ -526,7 +539,7 @@ function viewStats() {
     const start = addDays(maandagVan(t), -77);
     for (let i = 0; i < 84; i++) { const d = addDays(start, i); const s = d > t ? 'x' : (status(h, d) || ''); cells.push(`<i class="${s}" title="${dagLabel(d, true)}"></i>`); }
     const sc = score(h, 30);
-    return `<div class="card" style="--c:${h.kleur}"><div class="habstat"><div class="hab-emo">${esc(h.emoji)}</div><div class="grow">
+    return `<div class="card" style="--c:${kleurVan(h)}"><div class="habstat"><div class="hab-emo">${esc(h.emoji)}</div><div class="grow">
       <b>${esc(h.naam)}</b>
       <div class="nums"><span><b style="color:var(--fire)">${streak(h)}</b>reeks</span><span><b>${besteStreak(h)}</b>record</span><span><b>${sc == null ? '–' : Math.round(sc * 100) + '%'}</b>30 dagen</span></div>
       <div class="heat">${cells.join('')}</div></div></div></div>`;
@@ -888,7 +901,7 @@ function gewoonteForm(h, sjabloon) {
   <form id="hform">
     <label class="veld"><span>Naam</span><div class="emo-in"><input name="emoji" value="${esc(h.emoji)}" maxlength="4" aria-label="Emoji"><input name="naam" value="${esc(h.naam)}" placeholder="Bijv. 20 min lezen" required maxlength="60"></div></label>
     ${nieuw ? `<div class="chips" style="margin:-2px 0 14px">${SJABLONEN.slice(0, 6).map((s, i) => `<button type="button" class="chip" data-vul="${i}">${s.emoji} ${esc(s.naam)}</button>`).join('')}</div>` : ''}
-    <div class="veld"><span>Kleur</span><div class="kleuren">${KLEUREN.map(k => `<label style="--k:${k}"><input type="radio" name="kleur" value="${k}" ${k === h.kleur ? 'checked' : ''}></label>`).join('')}</div></div>
+    <div class="veld"><span>Kleur</span><div class="kleuren">${KLEUREN.map((k, i) => `<label style="--k:${palet()[i]}"><input type="radio" name="kleur" value="${k}" ${k === h.kleur ? 'checked' : ''}></label>`).join('')}</div></div>
     <div class="veld"><span>Op welke dagen?</span><div class="wdsel">${WEEKORDE.map(d => `<label><input type="checkbox" name="dag" value="${d}" ${h.dagen.includes(d) ? 'checked' : ''}>${WD[d]}</label>`).join('')}</div></div>
     <label class="veld"><span>Minimale versie — voor slechte dagen</span><input name="mini" value="${esc(h.mini || '')}" maxlength="60" placeholder="Bijv. 1 bladzijde, 1 rondje om het blok"></label>
     <p class="uitleg" style="margin:-6px 0 12px">Redt je reeks op een zware dag (+4 XP in plaats van +10). Telt niet voor een perfecte dag.</p>
@@ -1249,7 +1262,7 @@ function instellingenForm() {
   const permissie = 'Notification' in window ? Notification.permission : 'niet';
   openSheet(`<h2>Instellingen</h2>
   <h3>Stijl</h3>
-  <div class="themas">${THEMAS.map(t => `<button type="button" class="${(state.inst.thema || 'ijs') === t.id ? 'on' : ''}" data-x="thema" data-t="${t.id}"><div class="voorbeeld" style="background:${t.bg}"><i style="background:${t.kaart}"></i><i style="background:${t.acc}"></i><i style="background:${t.ext}"></i></div><b>${t.naam}</b><small class="muted" style="font-size:11px">${t.sub}</small></button>`).join('')}</div>
+  <div class="themas">${THEMAS.map(t => `<button type="button" class="${(state.inst.thema || 'middernacht') === t.id ? 'on' : ''}" data-x="thema" data-t="${t.id}"><div class="voorbeeld" style="background:${t.bg}"><i style="background:${t.kaart}"></i><i style="background:${t.acc}"></i><i style="background:${t.ext}"></i></div><b>${t.naam}</b><small class="muted" style="font-size:11px">${t.sub}</small></button>`).join('')}</div>
   <h3>Gewoontes</h3>
   ${hs.map((h, i) => `<div class="lijst-item"><span style="font-size:20px">${esc(h.emoji)}</span><span class="grow" style="${h.archief ? 'opacity:.5' : ''}">${esc(h.naam)}${h.archief ? ' <span class="tag">gepauzeerd</span>' : ''}</span>
     <button class="ibtn" data-x="op" data-i="${i}" title="Omhoog" ${i === 0 ? 'disabled' : ''}>${ic('left', '').replace('viewBox', 'style="transform:rotate(90deg)" viewBox')}</button>
