@@ -71,18 +71,26 @@ function ring(pct, size, dikte, kleur) {
 function nieuweState() {
   return {
     versie: 1, gewoontes: [], log: {}, taken: [], dagboek: {}, uitdaging: null, geschiedenis: [],
-    coach: [], gemeld: {}, lv: 1, inst: { ai: 'lokaal', meldingen: false, avond: '21:00' }
+    coach: [], gemeld: {}, lv: 1, tellers: {}, focus: null, focusLog: [], reviews: {}, bijgewerkt: 0,
+    inst: { ai: 'lokaal', meldingen: false, avond: '21:00' }
   };
 }
+function vanJSON(s) { const st = Object.assign(nieuweState(), s); st.inst = Object.assign(nieuweState().inst, s.inst); return st; }
 function laad() {
-  try {
-    const s = JSON.parse(localStorage.getItem(OPSLAG));
-    if (s && s.versie) { const st = Object.assign(nieuweState(), s); st.inst = Object.assign(nieuweState().inst, s.inst); return st; }
-  } catch (e) { /* lege start */ }
+  try { const s = JSON.parse(localStorage.getItem(OPSLAG)); if (s && s.versie) return vanJSON(s); } catch (e) { /* lege start */ }
   return nieuweState();
 }
 let state = laad();
-function bewaar() { try { localStorage.setItem(OPSLAG, JSON.stringify(state)); } catch (e) { toast('Opslaan mislukt'); } }
+// stempel=false: alleen lokaal opslaan (bijv. na ophalen van de sync), niet als "nieuwe wijziging" tellen
+function bewaar(stempel = true) {
+  if (stempel) state.bijgewerkt = Date.now();
+  try { localStorage.setItem(OPSLAG, JSON.stringify(state)); } catch (e) { toast('Opslaan mislukt'); }
+  if (stempel) planSync();
+}
+// Dingen die alleen op dit toestel horen (sleutels), nooit in de sync
+function lokaal(k, v) {
+  try { if (v === undefined) return JSON.parse(localStorage.getItem('ritme-' + k)) || {}; localStorage.setItem('ritme-' + k, JSON.stringify(v)); } catch (e) { return {}; }
+}
 
 const ui = { tab: 'vandaag', dag: vandaag(), maand: vandaag().slice(0, 7), agendaDag: vandaag(), coachBezig: false };
 
@@ -106,19 +114,22 @@ function zet(h, dag, s) {
 }
 function dagVoortgang(dag) {
   const hs = actieveGewoontes().filter(h => gepland(h, dag));
-  let klaar = 0, skip = 0, mis = 0;
-  hs.forEach(h => { const s = status(h, dag); if (s === 'klaar') klaar++; else if (s === 'skip') skip++; else if (s === 'gemist') mis++; });
+  let klaar = 0, vol = 0, skip = 0, mis = 0;
+  hs.forEach(h => { const s = status(h, dag); if (gedaan(s)) { klaar++; if (s === 'klaar') vol++; } else if (s === 'skip') skip++; else if (s === 'gemist') mis++; });
   const totaal = hs.length - skip;
-  return { klaar, skip, mis, totaal, aantal: hs.length, open: totaal - klaar - mis, pct: totaal ? klaar / totaal : null };
+  return { klaar, vol, skip, mis, totaal, aantal: hs.length, open: totaal - klaar - mis, pct: totaal ? klaar / totaal : null };
 }
-const perfect = v => v.totaal > 0 && v.klaar === v.totaal;
+// Perfect = alles volledig gedaan (de minimale versie telt wel voor je reeks, niet voor "perfect")
+const perfect = v => v.totaal > 0 && v.vol === v.totaal;
+function gedaan(s) { return s === 'klaar' || s === 'mini'; }
+const teller = (h, dag) => state.tellers[dag]?.[h.id] || 0;
 
 // Streak: gemist breekt, overslaan en niet-geplande dagen tellen niet mee maar breken ook niet.
 function streak(h) {
   let d = vandaag(), n = 0;
   for (let i = 0; i < 1500 && d >= h.aangemaakt; i++, d = addDays(d, -1)) {
     const s = status(h, d);
-    if (s === 'klaar') n++;
+    if (gedaan(s)) n++;
     else if (s === 'gemist') break;
   }
   return n;
@@ -127,18 +138,42 @@ function besteStreak(h) {
   let d = h.aangemaakt, n = 0, best = 0; const t = vandaag();
   for (let i = 0; i < 1500 && d <= t; i++, d = addDays(d, 1)) {
     const s = status(h, d);
-    if (s === 'klaar') best = Math.max(best, ++n);
+    if (gedaan(s)) best = Math.max(best, ++n);
     else if (s === 'gemist') n = 0;
   }
   return best;
 }
-function score(h, dagen) {
-  let k = 0, tot = 0; const t = vandaag();
+function score(h, dagen, eind = vandaag()) {
+  let k = 0, tot = 0;
   for (let i = 0; i < dagen; i++) {
-    const d = addDays(t, -i), s = status(h, d);
-    if (s === 'klaar') { k++; tot++; } else if (s === 'gemist') tot++;
+    const d = addDays(eind, -i), s = status(h, d);
+    if (gedaan(s)) { k++; tot++; } else if (s === 'gemist') tot++;
   }
   return tot ? k / tot : null;
+}
+const HERHAAL = { dag: ['dag', 'dagen'], week: ['week', 'weken'], maand: ['maand', 'maanden'], jaar: ['jaar', 'jaar'] };
+function herhaalLabel(hr) {
+  if (!hr) return '';
+  if (hr.type === 'werkdagen') return 'elke werkdag';
+  const n = hr.n || 1;
+  return n === 1 ? `elke ${HERHAAL[hr.type][0]}`.replace('elke jaar', 'elk jaar') : `elke ${n} ${HERHAAL[hr.type][1]}`;
+}
+function volgendeDatum(datum, hr) {
+  const n = hr.n || 1;
+  const dagNr = parse(datum || vandaag()).getDate(); // "elke maand op de 31e" blijft de laatste dag, ook na februari
+  const stap = d => {
+    if (hr.type === 'dag') return addDays(d, n);
+    if (hr.type === 'week') return addDays(d, 7 * n);
+    if (hr.type === 'werkdagen') { do { d = addDays(d, 1); } while ([0, 6].includes(parse(d).getDay())); return d; }
+    const x = parse(d);
+    if (hr.type === 'jaar') return ymd(new Date(x.getFullYear() + n, x.getMonth(), x.getDate()));
+    const y = new Date(x.getFullYear(), x.getMonth() + n, 1);
+    y.setDate(Math.min(dagNr, new Date(y.getFullYear(), y.getMonth() + 1, 0).getDate()));
+    return ymd(y);
+  };
+  let d = stap(datum || vandaag());
+  for (let i = 0; i < 500 && d <= vandaag(); i++) d = stap(d); // te laat afgevinkt? dan de eerstvolgende na vandaag
+  return d;
 }
 
 /* Taken */
@@ -156,10 +191,15 @@ function xpTotaal() {
   let xp = 0;
   for (const dag in state.log) {
     let k = 0;
-    for (const id in state.log[dag]) if (state.log[dag][id] === 'klaar' && gewoonte(id)) { xp += 10; k++; }
+    for (const id in state.log[dag]) {
+      if (!gewoonte(id)) continue;
+      if (state.log[dag][id] === 'klaar') { xp += 10; k++; } else if (state.log[dag][id] === 'mini') xp += 4;
+    }
     if (k && perfect(dagVoortgang(dag))) xp += 25;
   }
   state.taken.forEach(t => { if (t.klaar) xp += 5; });
+  state.focusLog.forEach(f => { xp += Math.floor(f.min / 5) * 2; });
+  xp += Object.keys(state.reviews).length * 30;
   state.geschiedenis.forEach(g => { if (g.voltooid) xp += 500; });
   return xp;
 }
@@ -189,7 +229,7 @@ function uitdagingStatus() {
     else if (dag > t) st = 'toekomst';
     else {
       const ss = hs.map(h => state.log[dag]?.[h.id] || (dag < t ? 'gemist' : 'open'));
-      if (ss.every(s => s === 'klaar')) st = 'ok';
+      if (ss.every(gedaan)) st = 'ok';
       else if (dag === t && ss.includes('open') && !ss.includes('gemist')) st = 'bezig';
       else if (jokers > 0) { jokers--; st = 'joker'; }
       else { st = 'mis'; gebroken = i; }
@@ -208,7 +248,8 @@ function uitdagingStatus() {
 function render() {
   renderTop();
   const v = $('#view');
-  v.innerHTML = { vandaag: viewVandaag, agenda: viewAgenda, uitdaging: viewUitdaging, stats: viewStats, coach: viewCoach, logboek: viewLogboek }[ui.tab]();
+  v.innerHTML = { vandaag: viewVandaag, agenda: viewAgenda, uitdaging: viewUitdaging, stats: viewStats, coach: viewCoach, logboek: viewLogboek, review: viewReview }[ui.tab]();
+  renderFocus();
   v.classList.remove('view-in'); void v.offsetWidth; v.classList.add('view-in');
   renderNav();
 }
@@ -224,7 +265,8 @@ function renderTop() {
 }
 function renderNav() {
   const tabs = [['vandaag', 'sun', 'Vandaag'], ['agenda', 'cal', 'Agenda'], ['uitdaging', 'flame', 'Uitdaging'], ['stats', 'chart', 'Stats'], ['coach', 'bolt', 'Coach']];
-  $('#nav').innerHTML = `<div class="bar">${tabs.map(([k, i, n]) => `<button class="${ui.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}">${ic(i)}${n}</button>`).join('')}</div>`;
+  const actief = ui.tab === 'review' ? 'stats' : ui.tab;
+  $('#nav').innerHTML = `<div class="bar">${tabs.map(([k, i, n]) => `<button class="${actief === k ? 'on' : ''}" data-act="tab" data-tab="${k}">${ic(i)}${n}</button>`).join('')}</div>`;
 }
 
 /* ---------- Vandaag ---------- */
@@ -269,6 +311,7 @@ function viewVandaag() {
     <div class="grow">
       <h1>${dagLabel(dag)}</h1>
       <p>${motivatie(v, dag)}</p>
+      ${weekFocus() && dag === t ? `<p class="weekfocus">🎯 ${esc(weekFocus())}</p>` : ''}
       <div class="stats">
         <span style="color:var(--fire)">${ic('flame')}${maxStreak} beste reeks</span>
         ${us && us.gestart && us.gebroken == null && !us.voltooid ? `<span style="color:var(--gold)">${ic('trophy')}dag ${us.dagNr}/${us.u.duur}</span>` : ''}
@@ -276,6 +319,7 @@ function viewVandaag() {
       </div>
     </div>
   </div>
+  ${reviewKaart(dag)}
 
   <div class="sec"><h2>Gewoontes</h2><span class="cnt">${v.klaar}/${v.totaal}</span><button class="btn sm r" data-act="nieuwegewoonte">${ic('plus')}Nieuw</button></div>
   ${habHtml}
@@ -298,13 +342,16 @@ function starterKaart() {
 }
 function habRij(h, dag, gisterenGemist) {
   const s = status(h, dag), t = vandaag(), toekomst = dag > t, st = streak(h);
+  const n = teller(h, dag), metDoel = h.doel > 1 && s === 'open' && !toekomst;
   return `<div class="hab st-${s}" style="--c:${h.kleur}">
     <div class="hab-emo">${esc(h.emoji)}</div>
-    <div class="hab-main" data-act="bewerkgewoonte" data-id="${h.id}">
+    <div class="hab-main" data-act="habdetail" data-id="${h.id}" data-dag="${dag}">
       <div class="hab-naam">${esc(h.naam)}</div>
       <div class="hab-meta">
         ${st ? `<span class="fl">${ic('flame')}${st}</span>` : '<span class="dim">nog geen reeks</span>'}
+        ${h.doel > 1 ? `<span>${n}/${h.doel} ${esc(h.eenheid || '')}</span>` : ''}
         ${h.herinnering ? `<span>⏰ ${h.herinnering}</span>` : ''}
+        ${s === 'mini' ? `<span class="tag lime">minimaal · reeks gered</span>` : ''}
         ${s === 'skip' ? '<span class="tag gold">overgeslagen · morgen weer</span>' : ''}
         ${s === 'gemist' ? '<span class="tag red">gemist</span>' : ''}
         ${gisterenGemist && s === 'open' ? '<span class="tag red">gisteren gemist</span>' : ''}
@@ -313,9 +360,18 @@ function habRij(h, dag, gisterenGemist) {
     <div class="hab-acts">
       <button class="sk" data-act="hab" data-s="skip" data-id="${h.id}" title="Overslaan (breekt je reeks niet)">${ic('skip')}</button>
       <button class="mi" data-act="hab" data-s="gemist" data-id="${h.id}" title="Gemist" ${toekomst ? 'disabled' : ''}>${ic('x')}</button>
-      <button class="big" data-act="hab" data-s="klaar" data-id="${h.id}" title="Afvinken" ${toekomst ? 'disabled' : ''}>${ic('check')}</button>
+      ${metDoel
+        ? `<button class="big teller" data-act="habplus" data-id="${h.id}" title="+1 ${esc(h.eenheid || '')}" style="--p:${n / h.doel}"><span>${n}/${h.doel}</span></button>`
+        : `<button class="big" data-act="hab" data-s="klaar" data-id="${h.id}" title="Afvinken" ${toekomst ? 'disabled' : ''}>${s === 'mini' ? '½' : ic('check')}</button>`}
     </div>
   </div>`;
+}
+function reviewWeek() { const t = vandaag(); return parse(t).getDay() === 0 ? maandagVan(t) : addDays(maandagVan(t), -7); }
+function weekFocus() { return state.reviews[addDays(maandagVan(vandaag()), -7)]?.focus || ''; }
+function reviewKaart(dag) {
+  const t = vandaag(), wd = parse(t).getDay();
+  if (dag !== t || ![0, 1].includes(wd) || state.reviews[reviewWeek()] || !actieveGewoontes().length) return '';
+  return `<button class="card reviewkaart" data-act="tab" data-tab="review"><span style="font-size:26px">🗓️</span><span class="grow"><b>Tijd voor je weekreview</b><small>3 minuten terugkijken, 1 focus kiezen. +30 XP</small></span>${ic('right')}</button>`;
 }
 function taakRij(k, dag) {
   const t = vandaag(), teLaat = !k.klaar && k.datum && k.datum < t;
@@ -325,6 +381,9 @@ function taakRij(k, dag) {
     k.prio === 2 ? '<span class="tag red">belangrijk</span>' : k.prio === 1 ? '<span class="tag gold">prio</span>' : '',
     k.verschoven >= 3 ? `<span class="tag fire">${k.verschoven}× verschoven</span>` : k.verschoven ? `<span>${k.verschoven}× verschoven</span>` : '',
     k.datum && k.datum !== dag && !teLaat ? `<span>${dagLabel(k.datum, true)}</span>` : '',
+    k.herhaal ? `<span>🔁 ${herhaalLabel(k.herhaal)}</span>` : '',
+    k.subtaken?.length ? `<span>☑ ${k.subtaken.filter(s => s.klaar).length}/${k.subtaken.length}</span>` : '',
+    k.lijst ? `<span class="tag">${esc(k.lijst)}</span>` : '',
     k.notitie ? '<span>📝</span>' : ''
   ].join('');
   return `<div class="task ${k.klaar ? 'klaar' : ''} ${teLaat ? 'te-laat' : ''} p${k.prio || 0}">
@@ -365,7 +424,7 @@ function viewAgenda() {
   const alog = state.dagboek[ad];
   const detail = `<div class="card dagdetail" style="margin-top:14px">
     <div class="row"><h2 class="grow">${dagLabel(ad)}</h2>${av && av.pct != null ? `<span class="tag ${perfect(av) ? 'lime' : ''}">${Math.round(av.pct * 100)}%</span>` : ''}</div>
-    ${ahs.length ? `<div class="mini-hab">${ahs.map(h => { const s = status(h, ad); return `<span class="${s}">${esc(h.emoji)} ${esc(h.naam)}${s === 'klaar' ? ' ✓' : s === 'skip' ? ' ↷' : s === 'gemist' ? ' ✕' : ''}</span>`; }).join('')}</div>` : ''}
+    ${ahs.length ? `<div class="mini-hab">${ahs.map(h => { const s = status(h, ad); return `<span class="${s}">${esc(h.emoji)} ${esc(h.naam)}${s === 'klaar' ? ' ✓' : s === 'mini' ? ' ½' : s === 'skip' ? ' ↷' : s === 'gemist' ? ' ✕' : ''}</span>`; }).join('')}</div>` : ''}
     ${atk.map(k => taakRij(k, ad)).join('') || '<div class="muted" style="font-size:13.5px;margin:8px 0">Geen taken op deze dag.</div>'}
     ${alog && (alog.tekst || alog.stemming) ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${alog.stemming ? MOODS[alog.stemming - 1] + ' ' : ''}${esc((alog.tekst || '').slice(0, 160))}</p>` : ''}
     <form class="add" data-form="agendataak" style="margin:12px 0 0"><input name="titel" placeholder="Taak toevoegen op ${dagLabel(ad, true).toLowerCase()}…" autocomplete="off" maxlength="140"><button class="btn pri">${ic('plus')}</button></form>
@@ -472,10 +531,51 @@ function viewStats() {
   <div class="tiles">
     <div class="tile"><b>${takenWeek}</b><small>taken af deze week</small></div>
     <div class="tile"><b style="color:${achter ? 'var(--red)' : 'var(--text)'}">${achter}</b><small>taken achterstallig</small></div>
+    <div class="tile"><b style="color:var(--blue)">${state.focusLog.filter(f => f.dag >= weekStart).reduce((s, f) => s + f.min, 0)}</b><small>focusminuten deze week</small></div>
+    <div class="tile"><b>${Object.keys(state.reviews).length}</b><small>weekreviews gedaan</small></div>
   </div>
+  <button class="btn full" style="margin-bottom:14px" data-act="tab" data-tab="review">🗓️ Weekreview ${state.reviews[reviewWeek()] ? 'bekijken' : 'doen'}</button>
   ${meestVerschoven.length ? `<div class="card"><b>Vaakst doorgeschoven</b><p class="muted" style="font-size:13px;margin:4px 0 8px">Tip: maak deze taken kleiner of plan er een vast tijdstip voor.</p>${meestVerschoven.map(k => `<div class="lijst-item"><span class="tag fire">${k.verschoven}×</span><span class="grow">${esc(k.titel)}</span></div>`).join('')}</div>` : ''}
   <div class="sec"><h2>Per gewoonte</h2><span class="cnt">12 weken</span></div>
   ${habKaarten || '<div class="leeg">Nog geen gewoontes.</div>'}`;
+}
+
+/* ---------- Weekreview ---------- */
+function viewReview() {
+  const ws = reviewWeek(), we = addDays(ws, 6), t = vandaag();
+  const dagen = Array.from({ length: 7 }, (_, i) => addDays(ws, i)).filter(d => d <= t);
+  let som = 0, n = 0, perf = 0;
+  dagen.forEach(d => { const v = dagVoortgang(d); if (v.pct != null) { som += v.pct; n++; } if (perfect(v)) perf++; });
+  const hs = actieveGewoontes().map(h => ({ h, s: score(h, dagen.length, dagen[dagen.length - 1] || ws) })).filter(x => x.s != null).sort((a, b) => b.s - a.s);
+  const taken = state.taken.filter(k => k.klaar && k.klaarOp >= ws && k.klaarOp <= we).length;
+  const focus = state.focusLog.filter(f => f.dag >= ws && f.dag <= we).reduce((s, f) => s + f.min, 0);
+  const moods = dagen.map(d => state.dagboek[d]?.stemming).filter(Boolean);
+  const r = state.reviews[ws] || {};
+  const bars = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(ws, i), v = d <= t ? dagVoortgang(d) : null, p = v?.pct ?? 0;
+    return `<div class="b"><em>${v ? Math.round(p * 100) + '%' : ''}</em><span class="${p < .2 ? 'laag' : p < 1 ? 'mid' : ''}" style="height:${Math.max(p * 100, 3)}%"></span><small>${WD[parse(d).getDay()]}</small></div>`;
+  }).join('');
+  const oud = Object.entries(state.reviews).filter(([w]) => w !== ws).sort().reverse().slice(0, 8);
+  return `<div class="sec" style="margin-top:12px"><button class="btn sm" data-act="tab" data-tab="stats">${ic('left')}Stats</button><h2 class="r">Weekreview</h2></div>
+  <div class="card chal-hero" style="padding:18px">
+    <div class="lbl">Week ${dagLabel(ws, true)} – ${dagLabel(we, true)}</div>
+    <div class="dagnr" style="margin:8px 0;font-size:54px">${n ? Math.round(som / n * 100) : 0}<small>%</small></div>
+    <p class="muted" style="margin:0">${n && som / n >= .85 ? 'Sterke week. Dit is wie je bent.' : n && som / n >= .6 ? 'Degelijk. Waar zit de laatste 20%?' : 'Zwaardere week. Eerlijk kijken = beter worden.'}</p>
+    <div class="chal-stats"><div><b style="color:var(--accent)">${perf}</b><small>perfecte dagen</small></div><div><b>${taken}</b><small>taken af</small></div><div><b style="color:var(--blue)">${focus}</b><small>focusmin.</small></div></div>
+  </div>
+  <div class="card"><div class="bars" style="height:90px">${bars}</div></div>
+  ${hs.length ? `<div class="card">
+    <div class="lijst-item"><span style="font-size:20px">🏆</span><span class="grow"><b>Beste:</b> ${esc(hs[0].h.emoji)} ${esc(hs[0].h.naam)}</span><span class="tag lime">${Math.round(hs[0].s * 100)}%</span></div>
+    ${hs.length > 1 ? `<div class="lijst-item"><span style="font-size:20px">🎯</span><span class="grow"><b>Zwakste:</b> ${esc(hs.at(-1).h.emoji)} ${esc(hs.at(-1).h.naam)}</span><span class="tag ${hs.at(-1).s < .6 ? 'red' : ''}">${Math.round(hs.at(-1).s * 100)}%</span></div>` : ''}
+    ${moods.length ? `<div class="lijst-item"><span style="font-size:20px">${MOODS[Math.round(moods.reduce((a, b) => a + b, 0) / moods.length) - 1]}</span><span class="grow"><b>Gemiddelde stemming</b></span><span class="tag">${(moods.reduce((a, b) => a + b, 0) / moods.length).toFixed(1)}/5</span></div>` : ''}
+  </div>` : ''}
+  <form class="card" data-form="review">
+    <label class="veld"><span>Wat ging goed?</span><textarea name="goed" placeholder="Waar ben je trots op?">${esc(r.goed || '')}</textarea></label>
+    <label class="veld"><span>Wat ging mis, en waarom?</span><textarea name="mis" placeholder="Eerlijk zijn. Wat hield je tegen?">${esc(r.mis || '')}</textarea></label>
+    <label class="veld"><span>Mijn ene focus voor volgende week</span><input name="focus" value="${esc(r.focus || '')}" maxlength="90" placeholder="Bijv. elke dag om 20:00 coderen, geen excuses"></label>
+    <div class="knoppen"><button type="button" class="btn" data-act="reviewcoach">${ic('bolt')}Bespreek met coach</button><button class="btn pri">${r.focus ? 'Bijwerken' : 'Opslaan (+30 XP)'}</button></div>
+  </form>
+  ${oud.length ? `<div class="sec"><h2>Eerdere weken</h2></div>${oud.map(([w, x]) => `<div class="logitem"><h3>Week van ${dagLabel(w, true)}</h3>${x.focus ? `<p><b>🎯 ${esc(x.focus)}</b></p>` : ''}${x.goed ? `<p class="muted">✅ ${esc(x.goed)}</p>` : ''}${x.mis ? `<p class="muted">⚠️ ${esc(x.mis)}</p>` : ''}</div>`).join('')}` : ''}`;
 }
 
 /* ---------- Logboek ---------- */
@@ -534,6 +634,12 @@ function profielVoorAI() {
   if (us) r.push(`Uitdaging: ${us.u.duur} dagen, dag ${us.dagNr}, ${us.gehaald} gehaald, jokers over ${us.jokersOver}${us.gebroken != null ? ', GEBROKEN' : ''}.`);
   const notities = Object.entries(state.dagboek).filter(([d]) => d >= addDays(t, -5)).map(([d, x]) => `${d}: ${x.stemming ? 'stemming ' + x.stemming + '/5. ' : ''}${(x.tekst || '').slice(0, 200)}`);
   if (notities.length) r.push('Logboek recent:\n' + notities.join('\n'));
+  const fm = state.focusLog.filter(f => f.dag >= addDays(t, -6)).reduce((s, f) => s + f.min, 0);
+  r.push(`Focusminuten laatste 7 dagen: ${fm}.`);
+  if (weekFocus()) r.push(`Eigen focus voor deze week (uit weekreview): ${weekFocus()}`);
+  const rv = state.reviews[reviewWeek()];
+  if (rv) r.push(`Weekreview: goed = ${rv.goed || '-'}; mis = ${rv.mis || '-'}; focus volgende week = ${rv.focus || '-'}`);
+  hs.filter(h => h.mini).forEach(h => r.push(`Minimale versie van ${h.naam}: ${h.mini}`));
   return r.join('\n');
 }
 function mdLite(s) {
@@ -550,8 +656,7 @@ function viewCoach() {
   const snel = ['Geef me een eerlijke weekreview', 'Waarom haak ik steeds af?', 'Plan morgen met mij', 'Daag me uit voor deze week'];
   return `<div class="sec" style="margin-top:12px"><h2>Wat opvalt</h2><span class="cnt">werkt altijd, ook offline</span></div>
   ${ins.map(x => `<div class="card inzicht"><div class="ico">${x.i}</div><div><h3>${esc(x.t)}</h3><p>${esc(x.p)}</p></div></div>`).join('')}
-  ${!['localhost', '127.0.0.1'].includes(location.hostname) ? '<p class="uitleg" style="margin:18px 2px -8px">💡 AI-chat werkt alleen op je laptop (Start Ritme.cmd). Je gegevens staan per toestel.</p>' : ''}
-  <div class="sec"><h2>Coach</h2><span class="cnt">${state.inst.ai === 'cloud' ? 'cloud (Claude Haiku)' : 'lokaal (Ollama)'}</span>${state.coach.length ? '<button class="btn sm r" data-act="wiscoach">Wissen</button>' : ''}</div>
+  <div class="sec"><h2>Coach</h2><span class="cnt">${!['localhost', '127.0.0.1'].includes(location.hostname) ? (lokaal('geheim').openrouter ? 'Claude Haiku (eigen sleutel)' : 'geen sleutel — zie ⚙️') : state.inst.ai === 'cloud' ? 'cloud (Claude Haiku)' : 'lokaal (Ollama)'}</span>${state.coach.length ? '<button class="btn sm r" data-act="wiscoach">Wissen</button>' : ''}</div>
   <div class="card">
     <div class="chat" id="chat">${state.coach.length ? state.coach.map(m => `<div class="msg ${m.rol}">${m.rol === 'ai' ? mdLite(m.tekst) : esc(m.tekst)}</div>`).join('') : '<div class="msg ai"><p>Ik ken je gewoontes, reeksen, taken en logboek. Vraag me wat je wilt — ik ben eerlijk, ook als het tegenvalt.</p></div>'}${ui.coachBezig ? '<div class="msg ai denk">Coach denkt na…</div>' : ''}</div>
     <div class="chips" style="margin-top:12px">${snel.map(s => `<button class="chip" data-act="coachsnel" data-q="${esc(s)}">${esc(s)}</button>`).join('')}</div>
@@ -566,7 +671,19 @@ async function vraagCoach(q) {
   const geschiedenis = state.coach.slice(-10).map(m => ({ role: m.rol === 'user' ? 'user' : 'assistant', content: m.tekst }));
   const messages = [{ role: 'system', content: sys }, ...geschiedenis];
   let antwoord;
+  const opLaptop = ['localhost', '127.0.0.1'].includes(location.hostname);
+  const sleutel = lokaal('geheim').openrouter;
   try {
+    if (!opLaptop && sleutel) {
+      // Op je telefoon: rechtstreeks naar OpenRouter met je eigen sleutel (die alleen op dit toestel staat)
+      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + sleutel, 'Content-Type': 'application/json', 'X-Title': 'Ritme' },
+        body: JSON.stringify({ model: 'anthropic/claude-haiku-5.5', temperature: .5, max_tokens: 900, messages })
+      });
+      const j = await r.json();
+      if (!j.choices) throw new Error(j.error?.message || 'OpenRouter gaf geen antwoord');
+      antwoord = j.choices[0].message.content || 'Leeg antwoord. Probeer het nog eens.';
+    } else {
     if (location.protocol === 'file:') throw new Error('file');
     const r = state.inst.ai === 'cloud'
       ? await fetch('/api/cloud', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) })
@@ -575,10 +692,10 @@ async function vraagCoach(q) {
     const j = JSON.parse(tekst);
     if (j.error) throw new Error(j.error);
     antwoord = (j.message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim() || 'Ik kreeg een leeg antwoord. Probeer het nog eens.';
+    }
   } catch (e) {
-    const lokaal = ['localhost', '127.0.0.1'].includes(location.hostname);
-    antwoord = !lokaal
-      ? 'De AI-chat werkt (nog) alleen op je laptop via **Start Ritme.cmd**. De inzichten hierboven werken wel altijd, ook op je telefoon.'
+    antwoord = !opLaptop
+      ? (sleutel ? 'Er ging iets mis met de AI: ' + e.message : 'Op je telefoon heb ik een eigen OpenRouter-sleutel nodig. Vul die in bij ⚙️ → AI-coach. De inzichten hierboven werken wel altijd.')
       : e.message === 'file' || e instanceof TypeError || e instanceof SyntaxError
         ? 'Ik kan de AI niet bereiken. Start de app via **Start Ritme.cmd** op je laptop (en zorg dat Ollama draait). De inzichten hierboven werken wel altijd.'
         : 'Er ging iets mis: ' + e.message;
@@ -610,7 +727,10 @@ function gewoonteForm(h, sjabloon) {
     ${nieuw ? `<div class="chips" style="margin:-2px 0 14px">${SJABLONEN.slice(0, 6).map((s, i) => `<button type="button" class="chip" data-vul="${i}">${s.emoji} ${esc(s.naam)}</button>`).join('')}</div>` : ''}
     <div class="veld"><span>Kleur</span><div class="kleuren">${KLEUREN.map(k => `<label style="--k:${k}"><input type="radio" name="kleur" value="${k}" ${k === h.kleur ? 'checked' : ''}></label>`).join('')}</div></div>
     <div class="veld"><span>Op welke dagen?</span><div class="wdsel">${WEEKORDE.map(d => `<label><input type="checkbox" name="dag" value="${d}" ${h.dagen.includes(d) ? 'checked' : ''}>${WD[d]}</label>`).join('')}</div></div>
-    <label class="veld"><span>Herinnering (optioneel)</span><input type="time" name="herinnering" value="${h.herinnering || ''}"></label>
+    <label class="veld"><span>Minimale versie — voor slechte dagen</span><input name="mini" value="${esc(h.mini || '')}" maxlength="60" placeholder="Bijv. 1 bladzijde, 1 rondje om het blok"></label>
+    <p class="uitleg" style="margin:-6px 0 12px">Redt je reeks op een zware dag (+4 XP in plaats van +10). Telt niet voor een perfecte dag.</p>
+    <div class="velden2"><label class="veld"><span>Doel per dag (aantal)</span><input type="number" name="doel" min="1" max="99" value="${h.doel || 1}"></label><label class="veld"><span>Eenheid</span><input name="eenheid" value="${esc(h.eenheid || '')}" maxlength="15" placeholder="glazen, km…"></label></div>
+    <div class="velden2"><label class="veld"><span>Herinnering</span><input type="time" name="herinnering" value="${h.herinnering || ''}"></label><label class="veld"><span>Timer (minuten)</span><input type="number" name="minuten" min="0" max="240" value="${h.minuten || ''}" placeholder="bijv. 30"></label></div>
     <div class="knoppen">${!nieuw ? '<button type="button" class="btn red" data-act="verwijdergewoonte">Verwijderen</button>' : ''}<button class="btn pri">${nieuw ? 'Toevoegen' : 'Opslaan'}</button></div>
   </form>`, pan => {
     const f = pan.querySelector('#hform');
@@ -628,7 +748,10 @@ function gewoonteForm(h, sjabloon) {
       const fd = new FormData(f);
       const dagen = fd.getAll('dag').map(Number);
       if (!dagen.length) return toast('Kies minstens één dag');
-      const data = { naam: fd.get('naam').trim(), emoji: fd.get('emoji').trim() || '✨', kleur: fd.get('kleur') || KLEUREN[0], dagen, herinnering: fd.get('herinnering') || '' };
+      const data = {
+        naam: fd.get('naam').trim(), emoji: fd.get('emoji').trim() || '✨', kleur: fd.get('kleur') || KLEUREN[0], dagen, herinnering: fd.get('herinnering') || '',
+        mini: fd.get('mini').trim(), doel: Math.max(1, Number(fd.get('doel')) || 1), eenheid: fd.get('eenheid').trim(), minuten: Number(fd.get('minuten')) || 0
+      };
       if (nieuw) state.gewoontes.push({ id: uid(), aangemaakt: vandaag(), archief: false, ...data });
       else Object.assign(h, data);
       bewaar(); sluitSheet(); render(); toast(nieuw ? 'Gewoonte toegevoegd. Reeks start nu. 🔥' : 'Opgeslagen');
@@ -648,24 +771,286 @@ function taakForm(k, datum) {
       <button type="button" class="chip" data-dat="${vandaag()}">Vandaag</button><button type="button" class="chip" data-dat="${addDays(vandaag(), 1)}">Morgen</button>
       <button type="button" class="chip" data-dat="${addDays(maandagVan(vandaag()), 7)}">Volgende week</button><button type="button" class="chip" data-dat="">Geen datum</button></div>
     <div class="veld"><span>Prioriteit</span><div class="chips">${['Normaal', 'Prio', 'Belangrijk'].map((p, i) => `<label class="chip ${(k.prio || 0) === i ? 'on' : ''}"><input type="radio" name="prio" value="${i}" ${(k.prio || 0) === i ? 'checked' : ''} hidden>${p}</label>`).join('')}</div></div>
+    <div class="velden2"><label class="veld"><span>Herhalen</span><select name="herhaal">
+      ${[['', 'Niet'], ['dag', 'Elke dag'], ['werkdagen', 'Elke werkdag'], ['week', 'Elke week'], ['maand', 'Elke maand'], ['jaar', 'Elk jaar']].map(([v, l]) => `<option value="${v}" ${(k.herhaal?.type || '') === v ? 'selected' : ''}>${l}</option>`).join('')}
+    </select></label><label class="veld"><span>Om de</span><input type="number" name="herhaaln" min="1" max="12" value="${k.herhaal?.n || 1}"></label></div>
+    <div class="veld"><span>Subtaken</span><div id="subs"></div><div class="add" style="margin:6px 0 0"><input id="subnieuw" placeholder="Subtaak toevoegen…" maxlength="100"><button type="button" class="btn" id="subplus">${ic('plus')}</button></div></div>
     <label class="veld"><span>Notitie</span><textarea name="notitie" placeholder="Details, links, eerste stap…">${esc(k.notitie || '')}</textarea></label>
+    ${k.lijst ? `<p class="uitleg">Lijst: ${esc(k.lijst)}</p>` : ''}
     ${!nieuw && k.verschoven ? `<p class="uitleg">Deze taak is ${k.verschoven}× doorgeschoven.</p>` : ''}
+    ${!nieuw && !k.klaar ? `<button type="button" class="btn full" style="margin-top:12px" data-x="focus">🎯 Focus-sessie op deze taak</button>` : ''}
     <div class="knoppen">${!nieuw ? '<button type="button" class="btn red" data-x="del">Verwijderen</button>' : ''}<button class="btn pri">${nieuw ? 'Toevoegen' : 'Opslaan'}</button></div>
   </form>`, pan => {
     const f = pan.querySelector('#tform');
+    let subs = (k.subtaken || []).map(s => ({ ...s }));
+    const tekenSubs = () => {
+      pan.querySelector('#subs').innerHTML = subs.map((s, i) => `<div class="sub"><input type="checkbox" data-i="${i}" ${s.klaar ? 'checked' : ''}><span class="grow ${s.klaar ? 'af' : ''}">${esc(s.titel)}</span><button type="button" class="ibtn" data-del="${i}" title="Weg">${ic('x')}</button></div>`).join('');
+    };
+    const subsBewaren = () => { if (!nieuw) { k.subtaken = subs.map(s => ({ ...s })); bewaar(); render(); } };
+    tekenSubs();
+    pan.querySelector('#subs').addEventListener('change', e => { const s = subs[e.target.dataset.i]; if (s) { s.klaar = e.target.checked; tekenSubs(); subsBewaren(); } });
+    pan.querySelector('#subs').addEventListener('click', e => { const b = e.target.closest('[data-del]'); if (b) { subs.splice(Number(b.dataset.del), 1); tekenSubs(); subsBewaren(); } });
+    const voegSubToe = () => { const inp = pan.querySelector('#subnieuw'); const v = inp.value.trim(); if (!v) return; subs.push({ id: uid(), titel: v, klaar: false }); inp.value = ''; tekenSubs(); subsBewaren(); inp.focus(); };
+    pan.querySelector('#subplus').onclick = voegSubToe;
+    pan.querySelector('#subnieuw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); voegSubToe(); } });
+    pan.querySelector('[data-x=focus]')?.addEventListener('click', () => focusKiezen(k.titel, { taakId: k.id }, 25));
     pan.querySelectorAll('[data-dat]').forEach(b => b.onclick = () => { f.datum.value = b.dataset.dat; });
     pan.querySelectorAll('input[name=prio]').forEach(r => r.onchange = () => pan.querySelectorAll('input[name=prio]').forEach(x => x.parentElement.classList.toggle('on', x.checked)));
-    pan.querySelector('[data-x=del]')?.addEventListener('click', () => { state.taken = state.taken.filter(x => x.id !== k.id); bewaar(); sluitSheet(); render(); toast('Taak verwijderd'); });
+    pan.querySelector('[data-x=del]')?.addEventListener('click', () => { const terug = snapshot(); state.taken = state.taken.filter(x => x.id !== k.id); bewaar(); sluitSheet(); render(); toast('Taak verwijderd', terug); });
     f.onsubmit = e => {
       e.preventDefault();
       const fd = new FormData(f);
-      const data = { titel: fd.get('titel').trim(), datum: fd.get('datum') || null, tijd: fd.get('tijd') || '', prio: Number(fd.get('prio') || 0), notitie: fd.get('notitie').trim() };
+      const hr = fd.get('herhaal');
+      const data = {
+        titel: fd.get('titel').trim(), datum: fd.get('datum') || null, tijd: fd.get('tijd') || '', prio: Number(fd.get('prio') || 0), notitie: fd.get('notitie').trim(),
+        herhaal: hr ? { type: hr, n: Math.max(1, Number(fd.get('herhaaln')) || 1) } : null, subtaken: subs
+      };
+      if (data.herhaal && !data.datum) data.datum = vandaag();
       if (nieuw) state.taken.push({ id: uid(), klaar: false, klaarOp: null, verschoven: 0, aangemaakt: vandaag(), ...data });
       else Object.assign(k, data);
       bewaar(); sluitSheet(); render(); toast(nieuw ? 'Taak toegevoegd' : 'Opgeslagen');
     };
     if (nieuw) setTimeout(() => f.titel.focus(), 250);
   });
+}
+
+/* ---------- Gewoonte-detail (tik op een gewoonte) ---------- */
+function habSheet(h, dag) {
+  const t = vandaag(), toekomst = dag > t, s = status(h, dag), n = teller(h, dag), sc = score(h, 30);
+  const knop = (x, icoon, titel, sub, aan) => `<button type="button" class="actie ${aan ? 'on' : ''}" data-x="${x}"><span class="ai">${icoon}</span><span class="grow"><b>${titel}</b>${sub ? `<small>${sub}</small>` : ''}</span></button>`;
+  openSheet(`<h2>${esc(h.emoji)} ${esc(h.naam)}</h2>
+    <p class="muted" style="margin:-8px 0 14px;font-size:13.5px">${dagLabel(dag)} · 🔥 ${streak(h)} reeks · record ${besteStreak(h)} · ${sc == null ? '–' : Math.round(sc * 100) + '%'} in 30 dagen</p>
+    ${h.doel > 1 && !toekomst ? `<div class="stepper"><button type="button" class="btn" data-x="min">−</button><div><b>${n}</b><span class="muted">/${h.doel}</span><small>${esc(h.eenheid || '')}</small></div><button type="button" class="btn pri" data-x="plus">+</button></div>` : ''}
+    <div class="acties">
+      ${!toekomst ? knop('klaar', '✓', 'Helemaal gedaan', '+10 XP', s === 'klaar') : ''}
+      ${!toekomst && h.mini ? knop('mini', '½', 'Minimale versie: ' + esc(h.mini), 'Reeks gered · +4 XP', s === 'mini') : ''}
+      ${knop('skip', '↷', 'Overslaan', 'Reeks blijft staan, morgen weer', s === 'skip')}
+      ${!toekomst ? knop('gemist', '✕', 'Gemist', 'Reeks breekt, gewoonte blijft in je lijst', s === 'gemist') : ''}
+      ${state.log[dag]?.[h.id] ? knop('leeg', '⟲', 'Leegmaken', 'Terug naar open', false) : ''}
+    </div>
+    ${dag === t && !gedaan(s) ? `<button type="button" class="btn full" style="margin-top:12px" data-x="timer">🎯 Start timer${h.minuten ? ` (${h.minuten} min)` : ''}</button>` : ''}
+    ${!h.mini ? '<p class="uitleg" style="margin-top:12px">Tip: geef deze gewoonte een minimale versie voor slechte dagen (via Bewerken).</p>' : ''}
+    <div class="knoppen"><button type="button" class="btn" data-x="bewerk">Bewerken</button><button type="button" class="btn" data-act="sluit">Sluiten</button></div>`, pan => {
+    pan.addEventListener('click', e => {
+      const b = e.target.closest('[data-x]'); if (!b) return;
+      const x = b.dataset.x;
+      if (['klaar', 'mini', 'skip', 'gemist'].includes(x)) { sluitSheet(); habActie(h, dag, x); }
+      if (x === 'leeg') { const terug = snapshot(); zet(h, dag, null); if (state.tellers[dag]) delete state.tellers[dag][h.id]; bewaar(); sluitSheet(); render(); toast('Leeggemaakt', terug); }
+      if (x === 'plus' || x === 'min') { telBij(h, dag, x === 'plus' ? 1 : -1); habSheet(h, dag); }
+      if (x === 'timer') focusKiezen(h.naam, { habId: h.id }, h.minuten || 25);
+      if (x === 'bewerk') gewoonteForm(h);
+    });
+  });
+}
+// Eén plek voor afvinken / minimaal / overslaan / gemist (met ongedaan maken)
+function habActie(h, dag, s, terug) {
+  terug = terug || snapshot();
+  const was = state.log[dag]?.[h.id];
+  const voor = dagVoortgang(dag);
+  const nieuw = was === s ? null : s;
+  zet(h, dag, nieuw);
+  if (h.doel > 1 && was === 'klaar' && nieuw !== 'klaar') { state.tellers[dag] = state.tellers[dag] || {}; state.tellers[dag][h.id] = Math.min(teller(h, dag), h.doel - 1); }
+  if (h.doel > 1 && nieuw === 'klaar') { state.tellers[dag] = state.tellers[dag] || {}; state.tellers[dag][h.id] = h.doel; }
+  bewaar();
+  const na = dagVoortgang(dag);
+  let msg = 'Teruggezet naar open';
+  if (nieuw === 'klaar') {
+    if (!perfect(voor) && perfect(na)) { confetti(90); msg = '🔥 Perfecte dag! +25 XP bonus'; }
+    else { const st = streak(h); msg = st > 1 && st % 7 === 0 ? `🔥 ${st} dagen op rij! Week vol!` : `+10 XP · ${h.naam}${st > 1 ? ` · reeks ${st}` : ''}`; }
+    if (navigator.vibrate) navigator.vibrate(18);
+  } else if (nieuw === 'mini') msg = `½ Minimaal gedaan. Reeks gered (${streak(h)}). +4 XP`;
+  else if (nieuw === 'skip') msg = 'Overgeslagen. Reeks blijft, morgen weer.';
+  else if (nieuw === 'gemist') msg = 'Gemist. Morgen staat hij er gewoon weer.';
+  render(); toast(msg, terug); checkLevelUp();
+}
+function telBij(h, dag, d) {
+  const terug = snapshot();
+  state.tellers[dag] = state.tellers[dag] || {};
+  const n = Math.max(0, Math.min(h.doel, teller(h, dag) + d));
+  state.tellers[dag][h.id] = n;
+  const s = state.log[dag]?.[h.id];
+  if (n >= h.doel && s !== 'klaar') return habActie(h, dag, 'klaar', terug);
+  if (n < h.doel && s === 'klaar') zet(h, dag, null);
+  bewaar(); render(); toast(`${h.emoji} ${n}/${h.doel} ${h.eenheid || ''}`, terug);
+}
+
+/* ---------- Focustimer ---------- */
+function focusKiezen(label, ref, standaard) {
+  const opties = [...new Set([15, 25, 45, 60, standaard])].sort((a, b) => a - b);
+  openSheet(`<h2>🎯 Focus</h2><p class="muted" style="margin:-8px 0 14px">${esc(label)}</p>
+    <div class="chips">${opties.map(m => `<button type="button" class="chip ${m === standaard ? 'on' : ''}" data-m="${m}">${m} min</button>`).join('')}</div>
+    <p class="uitleg" style="margin-top:12px">Telefoon op stil, één ding tegelijk. ${ref.habId ? 'Loopt de timer af, dan wordt de gewoonte vanzelf afgevinkt.' : 'Elke 5 minuten focus = +2 XP.'}</p>
+    <div class="knoppen"><button type="button" class="btn pri" data-start>▶ Start</button></div>`, pan => {
+    let m = standaard;
+    pan.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { m = Number(b.dataset.m); pan.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x === b)); });
+    pan.querySelector('[data-start]').onclick = () => { sluitSheet(); startFocus(m, label, ref); };
+  });
+}
+function startFocus(min, label, ref) {
+  state.focus = { id: uid(), label, duur: min, eind: Date.now() + min * 60000, rest: null, ...ref };
+  bewaar(); renderFocus(); toast(`🎯 ${min} min focus. Gaan.`);
+}
+function focusRest(f) { return f.rest != null ? f.rest : Math.max(0, f.eind - Date.now()); }
+function renderFocus() {
+  const el = $('#focus'), f = state.focus;
+  document.body.classList.toggle('focus-aan', !!f);
+  if (!f) { el.innerHTML = ''; el.dataset.k = ''; return; }
+  const ms = focusRest(f), sleutel = f.id + (f.rest != null ? 'p' : '');
+  if (el.dataset.k !== sleutel) {
+    el.dataset.k = sleutel;
+    el.innerHTML = `<div class="fpan"><div class="fbar"><span></span></div><div class="row"><span style="font-size:20px">🎯</span><div class="grow"><b class="ftijd"></b><small>${esc(f.label)}</small></div>
+      <button class="btn sm" data-act="focuspauze">${f.rest != null ? '▶ Verder' : '❚❚ Pauze'}</button><button class="btn sm" data-act="focusstop">Stop</button></div></div>`;
+  }
+  el.querySelector('.ftijd').textContent = `${pad(Math.floor(ms / 60000))}:${pad(Math.floor(ms / 1000) % 60)}`;
+  el.querySelector('.fbar span').style.width = (100 * (1 - ms / (f.duur * 60000))) + '%';
+  if (f.rest == null && ms <= 0) focusKlaar();
+}
+function focusKlaar(minuten) {
+  const f = state.focus; if (!f) return;
+  state.focus = null;
+  const min = minuten ?? f.duur;
+  state.focusLog.push({ dag: vandaag(), min, label: f.label });
+  state.focusLog = state.focusLog.slice(-600);
+  let extra = '';
+  if (f.habId && minuten == null) { const h = gewoonte(f.habId); if (h && !gedaan(status(h, vandaag()))) { zet(h, vandaag(), 'klaar'); extra = ` · ${h.naam} afgevinkt`; } }
+  bewaar(); render();
+  if (minuten == null) { piep(); meld('🎯 Focus klaar', `${min} min: ${f.label}`, 'focus'); confetti(40); }
+  toast(`🎯 ${min} min focus erop${extra}`); checkLevelUp();
+}
+function piep() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    [0, .22, .44].forEach((t, i) => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = i === 2 ? 1046 : 784; g.gain.setValueAtTime(.18, ac.currentTime + t); g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + t + .18); o.connect(g).connect(ac.destination); o.start(ac.currentTime + t); o.stop(ac.currentTime + t + .2); });
+  } catch (e) { /* geen geluid */ }
+  if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+}
+
+/* ---------- Import uit TickTick (CSV-back-up) ---------- */
+function parseCSV(text) {
+  const rijen = []; let rij = [], veld = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { veld += '"'; i++; } else q = false; } else veld += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { rij.push(veld); veld = ''; }
+    else if (c === '\n') { rij.push(veld); rijen.push(rij); rij = []; veld = ''; }
+    else if (c !== '\r') veld += c;
+  }
+  if (veld || rij.length) { rij.push(veld); rijen.push(rij); }
+  return rijen;
+}
+function rruleNaarHerhaal(s) {
+  if (!s) return null;
+  const m = k => (s.match(new RegExp(k + '=([^;]+)')) || [])[1];
+  const f = m('FREQ'), n = Number(m('INTERVAL')) || 1, by = m('BYDAY');
+  if (f === 'DAILY') return { type: 'dag', n };
+  if (f === 'WEEKLY') return by && by.split(',').sort().join() === 'FR,MO,TH,TU,WE' ? { type: 'werkdagen', n: 1 } : { type: 'week', n };
+  if (f === 'MONTHLY') return { type: 'maand', n };
+  if (f === 'YEARLY') return { type: 'jaar', n };
+  return null;
+}
+function leesTickTick(text) {
+  const rijen = parseCSV(text.replace(/^﻿/, ''));
+  const hi = rijen.findIndex(r => r.includes('Title') && r.includes('Status'));
+  if (hi < 0) throw new Error('Geen TickTick-kolommen gevonden');
+  const H = rijen[hi], perId = {}, alle = [];
+  rijen.slice(hi + 1).forEach(r => {
+    if (r.length < 5) return;
+    const g = n => { const i = H.indexOf(n); return i < 0 ? '' : (r[i] || '').trim(); };
+    if (g('Status') !== '0') return;                     // alleen open taken
+    if (g('Kind').toUpperCase() === 'NOTE') return;
+    const titel = g('Title'); if (!titel) return;
+    let datum = null, tijd = '';
+    const ruw = g('Due Date') || g('Start Date');
+    if (ruw) {
+      const d = new Date(ruw.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+      if (!isNaN(d)) { datum = ymd(d); if (g('Is All Day').toLowerCase() !== 'true') tijd = pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+    }
+    const pr = Number(g('Priority')) || 0;
+    let notitie = g('Content'), subtaken = [];
+    if (g('Is Check list') === 'Y') {
+      subtaken = notitie.split('\n').map(x => x.trim()).filter(Boolean).map(x => ({ id: uid(), titel: x.replace(/^[▫▪]\s*/, ''), klaar: x.startsWith('▪') }));
+      notitie = '';
+    }
+    const taak = {
+      id: uid(), titel, datum, tijd: tijd === '00:00' ? '' : tijd, prio: pr >= 5 ? 2 : pr >= 3 ? 1 : 0, notitie: notitie.slice(0, 2000),
+      lijst: g('List Name'), herhaal: rruleNaarHerhaal(g('Repeat')), subtaken, klaar: false, klaarOp: null, verschoven: 0, aangemaakt: vandaag(), bron: 'ticktick'
+    };
+    if (taak.herhaal && !taak.datum) taak.datum = vandaag();
+    const tid = g('taskId'), pid = g('parentId');
+    if (tid) perId[tid] = taak;
+    if (pid) taak._ouder = pid;
+    alle.push(taak);
+  });
+  // Subtaken (taken met een ouder) onder hun ouder hangen
+  return alle.filter(t => {
+    if (t._ouder && perId[t._ouder]) { perId[t._ouder].subtaken.push({ id: uid(), titel: t.titel, klaar: false }); return false; }
+    delete t._ouder; return true;
+  });
+}
+function tickTickForm(taken) {
+  const bestaand = new Set(state.taken.map(k => k.titel + '|' + k.datum));
+  const nieuw = taken.filter(k => !bestaand.has(k.titel + '|' + k.datum));
+  const lijsten = {}; nieuw.forEach(k => { lijsten[k.lijst || 'Inbox'] = (lijsten[k.lijst || 'Inbox'] || 0) + 1; });
+  openSheet(`<h2>Import uit TickTick</h2>
+    <p class="muted" style="margin:-6px 0 12px">${nieuw.length} open taken gevonden${taken.length > nieuw.length ? ` (${taken.length - nieuw.length} heb je al)` : ''}. Kies welke lijsten je wilt overnemen:</p>
+    <div class="keuze">${Object.entries(lijsten).map(([l, n]) => `<label><input type="checkbox" value="${esc(l)}" checked><span><span class="t">${esc(l)}</span><small>${n} taken</small></span></label>`).join('') || '<p class="muted">Niets nieuws om te importeren.</p>'}</div>
+    <p class="uitleg" style="margin-top:10px">Herhalende taken, subtaken, prioriteit en datums gaan mee. Afgeronde taken niet.</p>
+    <div class="knoppen"><button type="button" class="btn" data-act="sluit">Annuleren</button><button type="button" class="btn pri" data-go ${nieuw.length ? '' : 'disabled'}>Importeren</button></div>`, pan => {
+    pan.querySelector('[data-go]').onclick = () => {
+      const gekozen = new Set([...pan.querySelectorAll('.keuze input:checked')].map(i => i.value));
+      const erin = nieuw.filter(k => gekozen.has(k.lijst || 'Inbox'));
+      const terug = snapshot();
+      state.taken.push(...erin); bewaar(); sluitSheet(); render();
+      toast(`📥 ${erin.length} taken uit TickTick geïmporteerd`, terug);
+    };
+  });
+}
+
+/* ---------- Sync via een privé GitHub-repo ---------- */
+const enc = s => btoa(unescape(encodeURIComponent(s)));
+const dec = s => decodeURIComponent(escape(atob(s.replace(/\s/g, ''))));
+async function ghApi(cfg, opts = {}) {
+  return fetch(`https://api.github.com/repos/${cfg.repo}/contents/ritme.json`, {
+    ...opts, cache: 'no-store',
+    headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/vnd.github+json', ...(opts.body ? { 'Content-Type': 'application/json' } : {}) }
+  });
+}
+let syncTimer, syncBezig = false;
+function planSync() { if (!lokaal('sync').token) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNu(true), 3000); }
+async function syncNu(stil) {
+  const c = lokaal('sync');
+  if (!c.token || !c.repo || syncBezig || !navigator.onLine) return;
+  syncBezig = true;
+  try {
+    const r = await ghApi(c);
+    let remote = null, sha = null;
+    if (r.status === 200) { const j = await r.json(); sha = j.sha; remote = JSON.parse(dec(j.content)); }
+    else if (r.status === 401) throw new Error('sleutel ongeldig of verlopen');
+    else if (r.status === 403 || r.status === 404 && !(await fetch(`https://api.github.com/repos/${c.repo}`, { headers: { 'Authorization': 'Bearer ' + c.token } })).ok) throw new Error('geen toegang tot ' + c.repo);
+    else if (r.status !== 404) throw new Error('GitHub ' + r.status);
+    const lokaalT = state.bijgewerkt || 0, remoteT = remote?.bijgewerkt || 0;
+    if (remote && remoteT > lokaalT) {
+      // Andere telefoon/laptop is nieuwer: ophalen. Had je hier óók iets veranderd? Dan bewaren we jouw versie als reservekopie.
+      if (lokaalT > (c.laatst || 0)) try { localStorage.setItem('ritme-reserve', JSON.stringify(state)); } catch (e) { /* vol */ }
+      const focus = state.focus, gemeld = state.gemeld;
+      state = vanJSON(remote); state.focus = focus; state.gemeld = gemeld;
+      bewaar(false); render();
+      if (!stil) toast('⬇️ Nieuwste gegevens opgehaald');
+    } else if (!remote || lokaalT > remoteT) {
+      const kopie = { ...state, focus: null, gemeld: {} };
+      const p = await ghApi(c, { method: 'PUT', body: JSON.stringify({ message: 'Ritme sync', content: enc(JSON.stringify(kopie)), ...(sha ? { sha } : {}) }) });
+      if (p.status === 409 || p.status === 422) { syncBezig = false; return syncNu(stil); }
+      if (!p.ok) throw new Error('opslaan mislukt (' + p.status + ')');
+      if (!stil) toast('⬆️ Gesynchroniseerd');
+    } else if (!stil) toast('✅ Alles is al gelijk');
+    Object.assign(c, { laatst: Math.max(lokaalT, remoteT), wanneer: Date.now(), fout: null });
+  } catch (e) {
+    c.fout = e.message;
+    if (!stil) toast('Sync mislukt: ' + e.message);
+  }
+  lokaal('sync', c);
+  syncBezig = false;
 }
 
 function uitdagingForm() {
@@ -717,6 +1102,23 @@ function instellingenForm() {
     <label><input type="radio" name="ai" value="lokaal" ${state.inst.ai === 'lokaal' ? 'checked' : ''}><span><span class="t">Lokaal (Ollama, qwen3.5:4b)</span><small>Gratis en privé. Blijft op je laptop.</small></span></label>
     <label><input type="radio" name="ai" value="cloud" ${state.inst.ai === 'cloud' ? 'checked' : ''}><span><span class="t">Cloud (Claude Haiku via OpenRouter)</span><small>Slimmer en sneller. Kost een paar cent; je samenvatting gaat naar OpenRouter.</small></span></label>
   </div>
+  <label class="veld" style="margin-top:12px"><span>OpenRouter-sleutel (voor de coach op je telefoon)</span><input type="password" data-x="orkey" placeholder="${lokaal('geheim').openrouter ? '•••••••• (ingesteld)' : 'sk-or-…'}" autocomplete="off"></label>
+  <p class="uitleg">Alleen nodig op je telefoon. Blijft op dit toestel en gaat nooit mee in de sync. Tip: maak op openrouter.ai een aparte sleutel met een limiet van bijv. $2.</p>
+
+  <h3>Synchroniseren</h3>
+  ${(() => { const c = lokaal('sync'); return c.token ? `
+    <p style="margin:0 0 8px">🔗 Gekoppeld aan <b>${esc(c.repo)}</b></p>
+    <p class="uitleg" style="margin-bottom:8px">${c.fout ? `<span style="color:var(--red)">Laatste poging mislukt: ${esc(c.fout)}</span>` : c.wanneer ? 'Laatst gesynchroniseerd: ' + new Date(c.wanneer).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' }) : 'Nog niet gesynchroniseerd.'}</p>
+    <div class="knoppen" style="margin-top:0"><button class="btn" data-x="syncnu">Nu synchroniseren</button><button class="btn red" data-x="ontkoppel">Ontkoppelen</button></div>` : `
+    <p class="uitleg" style="margin-bottom:8px">Zelfde gegevens op je telefoon én laptop, via een privé GitHub-repo. Gratis, en alleen jij kunt erbij.</p>
+    <label class="veld"><span>Repo</span><input data-x="repo" value="PerryHarmsen/ritme-data"></label>
+    <label class="veld"><span>GitHub-sleutel (fine-grained token)</span><input type="password" data-x="token" placeholder="github_pat_…" autocomplete="off"></label>
+    <button class="btn pri full" data-x="koppel">Koppelen</button>`; })()}
+
+  <h3>Importeren uit TickTick</h3>
+  <p class="uitleg" style="margin-bottom:8px">In TickTick: Instellingen → Account → Back-up genereren. Kies hier dat CSV-bestand.</p>
+  <button class="btn full" data-x="ticktick">📥 TickTick-back-up kiezen</button>
+  <input type="file" accept=".csv,text/csv" data-x="tickbestand" hidden>
 
   <h3>Back-up</h3>
   <p class="uitleg" style="margin-bottom:8px">Alles staat alleen op dit toestel. Maak af en toe een back-up.</p>
@@ -732,6 +1134,16 @@ function instellingenForm() {
       if (x === 'nieuw') gewoonteForm();
       if (x === 'export') exporteer();
       if (x === 'import') pan.querySelector('[data-x=bestand]').click();
+      if (x === 'ticktick') pan.querySelector('[data-x=tickbestand]').click();
+      if (x === 'syncnu') syncNu(false).then(() => { if ($('#sheet').classList.contains('open')) instellingenForm(); });
+      if (x === 'ontkoppel' && confirm('Sync ontkoppelen op dit toestel? Je gegevens blijven gewoon staan.')) { lokaal('sync', {}); instellingenForm(); }
+      if (x === 'koppel') {
+        const repo = pan.querySelector('[data-x=repo]').value.trim(), token = pan.querySelector('[data-x=token]').value.trim();
+        if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !token) return toast('Vul repo en sleutel in');
+        lokaal('sync', { repo, token, laatst: 0 });
+        toast('Koppelen…');
+        syncNu(false).then(() => instellingenForm());
+      }
       if (x === 'reset' && confirm('Echt ALLES wissen? Gewoontes, taken, logboek en uitdaging. Dit kan niet ongedaan worden.')) { state = nieuweState(); bewaar(); sluitSheet(); render(); toast('Alles gewist'); }
     });
     pan.querySelector('[data-x=meld]').onchange = async e => {
@@ -745,6 +1157,13 @@ function instellingenForm() {
       bewaar();
     };
     pan.querySelector('[data-x=avond]').onchange = e => { state.inst.avond = e.target.value || '21:00'; bewaar(); };
+    pan.querySelector('[data-x=orkey]').onchange = e => { const g = lokaal('geheim'); g.openrouter = e.target.value.trim() || undefined; lokaal('geheim', g); e.target.value = ''; e.target.placeholder = g.openrouter ? '•••••••• (ingesteld)' : 'sk-or-…'; toast(g.openrouter ? 'Sleutel bewaard op dit toestel' : 'Sleutel verwijderd'); };
+    pan.querySelector('[data-x=tickbestand]').onchange = e => {
+      const file = e.target.files[0]; if (!file) return;
+      const rd = new FileReader();
+      rd.onload = () => { try { tickTickForm(leesTickTick(rd.result)); } catch (err) { toast('Dit lijkt geen TickTick-back-up: ' + err.message); } };
+      rd.readAsText(file);
+    };
     pan.querySelectorAll('input[name=ai]').forEach(r => r.onchange = () => { state.inst.ai = r.value; bewaar(); render(); });
     pan.querySelector('[data-x=bestand]').onchange = e => {
       const file = e.target.files[0]; if (!file) return;
@@ -780,39 +1199,53 @@ const acties = {
   opendag: el => { ui.dag = el.dataset.dag; ui.tab = 'vandaag'; render(); window.scrollTo({ top: 0 }); },
   maand: el => { const [y, m] = ui.maand.split('-').map(Number); const d = new Date(y, m - 1 + Number(el.dataset.n), 1); ui.maand = ymd(d).slice(0, 7); render(); },
   agendadag: el => { ui.agendaDag = el.dataset.dag; render(); document.querySelector('.dagdetail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); },
-  hab: el => {
-    const h = gewoonte(el.dataset.id), s = el.dataset.s;
-    const dag = ui.tab === 'uitdaging' ? vandaag() : ui.dag;
-    const was = state.log[dag]?.[h.id];
-    const voor = dagVoortgang(dag);
-    zet(h, dag, was === s ? null : s);
-    bewaar();
-    const na = dagVoortgang(dag);
-    if (s === 'klaar' && was !== 'klaar') {
-      if (!perfect(voor) && perfect(na)) { confetti(90); toast('🔥 Perfecte dag! +25 XP bonus'); }
-      else { const st = streak(h); toast(st > 1 && st % 7 === 0 ? `🔥 ${st} dagen op rij! Week vol!` : `+10 XP · ${h.naam}${st > 1 ? ` · reeks ${st}` : ''}`); }
-      if (navigator.vibrate) navigator.vibrate(18);
-    } else if (s === 'skip' && was !== 'skip') toast('Overgeslagen. Reeks blijft staan, morgen weer.');
-    else if (s === 'gemist' && was !== 'gemist') toast('Gemist. Morgen staat hij er gewoon weer.');
-    render(); checkLevelUp();
-  },
+  hab: el => habActie(gewoonte(el.dataset.id), ui.tab === 'uitdaging' ? vandaag() : ui.dag, el.dataset.s),
+  habplus: el => telBij(gewoonte(el.dataset.id), ui.tab === 'uitdaging' ? vandaag() : ui.dag, 1),
+  habdetail: el => habSheet(gewoonte(el.dataset.id), el.dataset.dag || vandaag()),
   taak: el => {
+    const terug = snapshot();
     const k = state.taken.find(x => x.id === el.dataset.id);
     k.klaar = !k.klaar; k.klaarOp = k.klaar ? vandaag() : null;
-    bewaar(); render();
-    if (k.klaar) { toast('+5 XP · taak af'); if (navigator.vibrate) navigator.vibrate(12); }
+    let msg = k.klaar ? '+5 XP · taak af' : 'Weer open gezet';
+    if (k.klaar && k.herhaal && !k.volgendeId) {
+      // Herhalende taak: meteen de volgende klaarzetten
+      const volgende = { ...JSON.parse(JSON.stringify(k)), id: uid(), klaar: false, klaarOp: null, verschoven: 0, volgendeId: null, datum: volgendeDatum(k.datum, k.herhaal) };
+      volgende.subtaken = (volgende.subtaken || []).map(s => ({ ...s, id: uid(), klaar: false }));
+      k.volgendeId = volgende.id; state.taken.push(volgende);
+      msg = `+5 XP · 🔁 volgende: ${dagLabel(volgende.datum).toLowerCase()}`;
+    } else if (!k.klaar && k.volgendeId) {
+      state.taken = state.taken.filter(x => !(x.id === k.volgendeId && !x.klaar)); k.volgendeId = null;
+    }
+    bewaar(); render(); toast(msg, terug);
+    if (k.klaar && navigator.vibrate) navigator.vibrate(12);
     checkLevelUp();
   },
   taakskip: el => {
+    const terug = snapshot();
     const k = state.taken.find(x => x.id === el.dataset.id);
     const basis = k.datum && k.datum >= vandaag() ? k.datum : vandaag();
     k.datum = addDays(basis, 1); k.verschoven = (k.verschoven || 0) + 1;
     bewaar(); render();
-    toast(k.verschoven >= 3 ? `Al ${k.verschoven}× verschoven… maak hem kleiner?` : `Doorgeschoven naar ${dagLabel(k.datum).toLowerCase()}`);
+    toast(k.verschoven >= 3 ? `Al ${k.verschoven}× verschoven… maak hem kleiner?` : `Doorgeschoven naar ${dagLabel(k.datum).toLowerCase()}`, terug);
   },
   bewerktaak: el => taakForm(state.taken.find(x => x.id === el.dataset.id)),
   nieuwetaak: () => taakForm(null, ui.dag),
-  bewerkgewoonte: el => gewoonteForm(gewoonte(el.dataset.id)),
+  focuspauze: () => {
+    const f = state.focus; if (!f) return;
+    if (f.rest != null) { f.eind = Date.now() + f.rest; f.rest = null; } else f.rest = focusRest(f);
+    bewaar(); renderFocus();
+  },
+  focusstop: () => {
+    const f = state.focus; if (!f) return;
+    const min = Math.floor((f.duur * 60000 - focusRest(f)) / 60000);
+    if (min >= 5) { if (confirm(`Focus stoppen? ${min} minuten tellen mee.`)) focusKlaar(min); }
+    else if (confirm('Focus stoppen?')) { state.focus = null; bewaar(); render(); }
+  },
+  reviewcoach: () => {
+    const f = document.querySelector('[data-form=review]');
+    const s = f ? `Wat ging goed: ${f.goed.value || '-'}. Wat ging mis: ${f.mis.value || '-'}. Mijn focus: ${f.focus.value || '-'}.` : '';
+    ui.tab = 'coach'; vraagCoach('Bespreek mijn week eerlijk met me. ' + s + ' Wat is jouw advies voor volgende week?');
+  },
   nieuwegewoonte: () => gewoonteForm(),
   sjabloon: el => {
     const s = SJABLONEN[el.dataset.i];
@@ -838,6 +1271,13 @@ document.addEventListener('click', e => {
 document.addEventListener('submit', e => {
   const f = e.target.closest('[data-form]'); if (!f) return;
   e.preventDefault();
+  if (f.dataset.form === 'review') {
+    const nieuw = !state.reviews[reviewWeek()];
+    state.reviews[reviewWeek()] = { goed: f.goed.value.trim(), mis: f.mis.value.trim(), focus: f.focus.value.trim(), datum: vandaag() };
+    bewaar(); ui.tab = 'vandaag'; ui.dag = vandaag(); render(); window.scrollTo({ top: 0 });
+    if (nieuw) { confetti(50); toast('🗓️ Weekreview klaar. +30 XP'); } else toast('Weekreview bijgewerkt');
+    return checkLevelUp();
+  }
   const v = f.elements[0].value.trim(); if (!v) return;
   if (f.dataset.form === 'snel' || f.dataset.form === 'agendataak') {
     const datum = f.dataset.form === 'snel' ? ui.dag : ui.agendaDag;
@@ -858,8 +1298,21 @@ document.addEventListener('input', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') sluitSheet(); });
 
 /* ---------- Toast & confetti ---------- */
-let toastTimer;
-function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2200); }
+let toastTimer, undoFn = null;
+// toast(tekst, terug): met een "Ongedaan"-knop als je een terugzet-functie meegeeft
+function toast(t, terug) {
+  const el = $('#toast');
+  el.innerHTML = `<span>${esc(t)}</span>${terug ? '<button class="undo">Ongedaan</button>' : ''}`;
+  undoFn = terug || null;
+  el.classList.toggle('klikbaar', !!terug);
+  el.classList.add('show'); clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove('show', 'klikbaar'); undoFn = null; }, terug ? 4500 : 2200);
+}
+function snapshot() {
+  const s = JSON.stringify(state);
+  return () => { const focus = state.focus; state = vanJSON(JSON.parse(s)); state.focus = focus; bewaar(); render(); toast('↩️ Teruggezet'); };
+}
+$('#toast').addEventListener('click', e => { if (e.target.closest('.undo') && undoFn) { const f = undoFn; undoFn = null; f(); } });
 function confetti(n = 60) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const c = $('#confetti'), kl = ['#C6FF3D', '#FF7A1A', '#FFC83D', '#4DA3FF', '#FF4D8D'];
@@ -906,6 +1359,12 @@ setInterval(() => {
   if (vandaag() !== laatsteDag) { if (ui.dag === laatsteDag) ui.dag = vandaag(); laatsteDag = vandaag(); render(); }
   checkHerinneringen();
 }, 30000);
+setInterval(() => { if (state.focus) renderFocus(); }, 1000);
+// Sync: bij openen, bij terugkomen in de app en elke 2 minuten
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { syncNu(true); renderFocus(); } });
+window.addEventListener('online', () => syncNu(true));
+setInterval(() => syncNu(true), 120000);
+setTimeout(() => syncNu(true), 800);
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 state.lv = Math.max(state.lv || 1, 1);
 render();

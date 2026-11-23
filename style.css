@@ -306,3 +306,49 @@ details.klaarlijst summary::-webkit-details-marker { display: none; }
   .sheet-pan::before { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- v2: minimaal, tellers, detail, focus, review, sync ---------- */
+.hab.st-mini { background: color-mix(in srgb, var(--c) 5%, var(--surface)); border-color: color-mix(in srgb, var(--c) 25%, var(--line)); border-style: dashed; }
+.hab.st-mini .hab-acts button.big { background: color-mix(in srgb, var(--c) 35%, transparent); color: var(--text); border-style: dashed; font: 700 18px var(--head); }
+.hab-acts button.big.teller { position: relative; overflow: hidden; color: var(--text); font: 700 12px var(--head); }
+.hab-acts button.big.teller::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--p) * 100%); background: color-mix(in srgb, var(--c) 40%, transparent); transition: height .3s; }
+.hab-acts button.big.teller span { position: relative; }
+.heat i.mini { background: color-mix(in srgb, var(--c) 45%, var(--surface2)); }
+.mini-hab span.mini { background: rgba(198,255,61,.07); color: var(--accent); border: 1px dashed rgba(198,255,61,.4); }
+
+.acties { display: grid; gap: 7px; }
+.actie { display: flex; align-items: center; gap: 12px; text-align: left; padding: 11px 12px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--line); }
+.actie .ai { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--track); font: 700 17px var(--head); flex: none; }
+.actie small { display: block; color: var(--muted); font-size: 12px; }
+.actie.on { border-color: var(--accent); background: rgba(198,255,61,.08); }
+.actie.on .ai { background: var(--accent); color: var(--accent-ink); }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface2); border-radius: 16px; padding: 10px; margin-bottom: 12px; }
+.stepper .btn { width: 54px; height: 54px; font-size: 26px; padding: 0; }
+.stepper div { text-align: center; }
+.stepper b { font: 700 34px var(--head); }
+.stepper small { display: block; color: var(--muted); font-size: 12px; }
+
+.sub { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.sub input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; padding: 0; }
+.sub .af { text-decoration: line-through; color: var(--dim); }
+.sub .ibtn { width: 30px; height: 30px; }
+.sub .ibtn svg { width: 14px; height: 14px; }
+
+#toast.klikbaar { pointer-events: auto; }
+#toast { display: flex; align-items: center; gap: 12px; }
+#toast span { overflow: hidden; text-overflow: ellipsis; }
+#toast .undo { background: var(--bg); color: var(--accent); border-radius: 9px; padding: 4px 10px; font-weight: 700; font-size: 13px; flex: none; }
+
+#focus { position: fixed; left: 0; right: 0; bottom: calc(84px + var(--safe-b)); z-index: 29; padding: 0 12px; }
+#focus .fpan { max-width: 520px; margin: 0 auto; background: rgba(20,23,28,.96); backdrop-filter: blur(14px); border: 1px solid rgba(77,163,255,.45); border-radius: 18px; padding: 10px 12px; overflow: hidden; position: relative; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+#focus .fbar { position: absolute; left: 0; top: 0; right: 0; height: 3px; background: var(--track); }
+#focus .fbar span { display: block; height: 100%; background: var(--blue); transition: width 1s linear; }
+#focus b { font: 700 20px var(--head); font-variant-numeric: tabular-nums; margin-right: 6px; }
+#focus small { color: var(--muted); font-size: 12.5px; }
+body.focus-aan #view { padding-bottom: calc(160px + var(--safe-b)); }
+body.focus-aan #toast { bottom: calc(160px + var(--safe-b)); }
+
+.weekfocus { color: var(--text) !important; font-weight: 600; background: rgba(77,163,255,.1); border-radius: 10px; padding: 5px 9px; display: inline-block; }
+.reviewkaart { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border-color: rgba(77,163,255,.45); background: linear-gradient(90deg, rgba(77,163,255,.12), var(--surface)); }
+.reviewkaart small { display: block; color: var(--muted); font-size: 12.5px; }
+.reviewkaart svg { width: 18px; height: 18px; color: var(--blue); }
