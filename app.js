@@ -5,7 +5,7 @@
    ========================================================= */
 
 const OPSLAG = 'ritme-v1';
-const KLEUREN = ['#C6FF3D', '#FF7A1A', '#4DA3FF', '#B57BFF', '#FF4D8D', '#2EE6C5', '#FFC83D'];
+const KLEUREN = ['#9D84FF', '#5BA8FF', '#FF8FC8', '#4FD8C4', '#FFB36B', '#C77DFF', '#7FD4FF'];
 const WD = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
 const WD_LANG = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag'];
 const MAANDEN = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
@@ -295,7 +295,7 @@ function viewVandaag() {
   const strip = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(ma, i), dv = d <= t ? dagVoortgang(d) : null;
     return `<button class="dag ${d === t ? 'vandaag' : ''} ${d === dag ? 'sel' : ''}" data-act="kiesdag" data-dag="${d}">
-      <small>${WD[parse(d).getDay()]}</small><span class="n">${dv ? ring(dv.pct, 30, 3, perfect(dv) ? 'var(--accent)' : 'var(--fire)') : ''}${parse(d).getDate()}</span></button>`;
+      <small>${WD[parse(d).getDay()]}</small><span class="n">${dv ? ring(dv.pct, 30, 3, perfect(dv) ? 'url(#rgP)' : 'url(#rgB)') : ''}${parse(d).getDate()}</span></button>`;
   }).join('');
 
   const gisteren = addDays(t, -1);
@@ -307,7 +307,7 @@ function viewVandaag() {
   <div class="strip"><button class="nav" data-act="week" data-n="-7">${ic('left')}</button><div class="days">${strip}</div><button class="nav" data-act="week" data-n="7">${ic('right')}</button></div>
   ${dag !== t ? `<div class="terug"><span>Je bekijkt ${dagLabel(dag)}</span><button class="btn sm" data-act="kiesdag" data-dag="${t}">Naar vandaag</button></div>` : ''}
   <div class="card hero" style="margin-top:12px">
-    <div class="big">${ring(v.pct, 96, 10, perfect(v) ? 'var(--accent)' : 'var(--fire)')}<div class="pct"><div>${v.pct == null ? '–' : Math.round(v.pct * 100) + '%'}<small>${v.totaal ? v.klaar + '/' + v.totaal : ''}</small></div></div></div>
+    <div class="big">${ring(v.pct, 96, 10, perfect(v) ? 'url(#rgP)' : 'url(#rgB)')}<div class="pct"><div>${v.pct == null ? '–' : Math.round(v.pct * 100) + '%'}<small>${v.totaal ? v.klaar + '/' + v.totaal : ''}</small></div></div></div>
     <div class="grow">
       <h1>${dagLabel(dag)}</h1>
       <p>${motivatie(v, dag)}</p>
@@ -325,7 +325,7 @@ function viewVandaag() {
   ${habHtml}
 
   <div class="sec"><h2>Taken</h2><span class="cnt">${open.length} open</span><button class="btn sm r" data-act="nieuwetaak">${ic('plus')}Uitgebreid</button></div>
-  <form class="add" data-form="snel"><input name="titel" placeholder="Taak voor ${dagLabel(dag).toLowerCase()}…" autocomplete="off" maxlength="140"><button class="btn pri">${ic('plus')}</button></form>
+  <form class="add" data-form="snel"><input name="titel" placeholder="Taak… bijv. morgen 10 uur tandarts bellen" autocomplete="off" maxlength="140"><button class="btn pri">${ic('plus')}</button></form><div class="hint"></div>
   ${open.map(k => taakRij(k, dag)).join('') || `<div class="leeg">${klaar.length ? 'Alles af. Sterk bezig. ✅' : 'Nog geen taken voor deze dag.'}</div>`}
   ${klaar.length ? `<details class="klaarlijst"><summary>✓ ${klaar.length} afgerond</summary>${klaar.map(k => taakRij(k, dag)).join('')}</details>` : ''}
   ${dag === t ? zonderDatum() : ''}
@@ -427,7 +427,7 @@ function viewAgenda() {
     ${ahs.length ? `<div class="mini-hab">${ahs.map(h => { const s = status(h, ad); return `<span class="${s}">${esc(h.emoji)} ${esc(h.naam)}${s === 'klaar' ? ' ✓' : s === 'mini' ? ' ½' : s === 'skip' ? ' ↷' : s === 'gemist' ? ' ✕' : ''}</span>`; }).join('')}</div>` : ''}
     ${atk.map(k => taakRij(k, ad)).join('') || '<div class="muted" style="font-size:13.5px;margin:8px 0">Geen taken op deze dag.</div>'}
     ${alog && (alog.tekst || alog.stemming) ? `<p class="muted" style="font-size:13.5px;margin:10px 0 0">${alog.stemming ? MOODS[alog.stemming - 1] + ' ' : ''}${esc((alog.tekst || '').slice(0, 160))}</p>` : ''}
-    <form class="add" data-form="agendataak" style="margin:12px 0 0"><input name="titel" placeholder="Taak toevoegen op ${dagLabel(ad, true).toLowerCase()}…" autocomplete="off" maxlength="140"><button class="btn pri">${ic('plus')}</button></form>
+    <form class="add" data-form="agendataak" style="margin:12px 0 0"><input name="titel" placeholder="Taak toevoegen op ${dagLabel(ad, true).toLowerCase()}…" autocomplete="off" maxlength="140"><button class="btn pri">${ic('plus')}</button></form><div class="hint"></div>
     <button class="btn sm full" style="margin-top:8px" data-act="opendag" data-dag="${ad}">Open deze dag om af te vinken</button>
   </div>`;
 
@@ -665,6 +665,77 @@ function viewCoach() {
       ${spraak ? `<button type="button" class="btn mic" data-act="mic" title="Inspreken">🎤</button>` : ''}<button class="btn pri" ${ui.coachBezig ? 'disabled' : ''}>${ic('send')}</button></form>
   </div>`;
 }
+/* ---------- Datums uit gewone tekst halen ("morgen 10 uur tandarts", "24e pakket bestellen") ---------- */
+const DAGNAMEN = { zondag: 0, maandag: 1, dinsdag: 2, woensdag: 3, donderdag: 4, vrijdag: 5, zaterdag: 6 };
+const MAANDNR = { jan: 0, januari: 0, feb: 1, februari: 1, mrt: 2, maart: 2, apr: 3, april: 3, mei: 4, jun: 5, juni: 5, jul: 6, juli: 6, aug: 7, augustus: 7, sep: 8, sept: 8, september: 8, okt: 9, oktober: 9, nov: 10, november: 10, dec: 11, december: 11 };
+const WD_RE = 'maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag';
+const MAAND_RE = 'januari|februari|maart|april|mei|juni|juli|augustus|september|oktober|november|december|sept|jan|feb|mrt|apr|jun|jul|aug|sep|okt|nov|dec';
+function datumUit(dag, maand, jaar) {
+  const nu = parse(vandaag());
+  const y = jaar ? (String(jaar).length === 2 ? 2000 + Number(jaar) : Number(jaar)) : nu.getFullYear();
+  const mm = maand ?? nu.getMonth();
+  if (dag < 1 || dag > 31 || mm < 0 || mm > 11) return null;
+  let d = new Date(y, mm, dag);
+  if (d.getMonth() !== mm) return null;
+  if (!jaar && ymd(d) < vandaag()) d = maand == null ? new Date(y, mm + 1, dag) : new Date(y + 1, mm, dag); // al geweest → volgende keer
+  return ymd(d);
+}
+function tijdUit(h, min, gok) {
+  if (gok && h >= 1 && h <= 7) h += 12;   // "om 5 uur" bedoelt bijna altijd 17:00
+  if (h < 0 || h > 23 || min < 0 || min > 59) return '';
+  return pad(h) + ':' + pad(min);
+}
+function leesDatum(invoer, basis) {
+  const t = vandaag();
+  let s = ' ' + invoer.replace(/\s+/g, ' ') + ' ', datum = null, tijd = '', herhaal = null, prio = 0, m;
+  const middag = /avond|middag|'s avonds|'s middags|\bpm\b/i.test(invoer); // "vanavond om 8" = 20:00
+  const weg = re => { const x = s.match(re); if (x) s = s.replace(x[0], ' '); return x; };
+  const volgendeWd = wd => { let d = addDays(t, 1); while (parse(d).getDay() !== wd) d = addDays(d, 1); return d; };
+  // Herhaling
+  if ((m = weg(new RegExp(`\\s(?:elke|iedere)\\s+(${WD_RE})\\s`, 'i')))) { const wd = DAGNAMEN[m[1].toLowerCase()]; herhaal = { type: 'week', n: 1 }; datum = parse(t).getDay() === wd ? t : volgendeWd(wd); }
+  else if (weg(/\s(?:(?:elke|iedere)\s+werkdag|doordeweeks)\s/i)) herhaal = { type: 'werkdagen', n: 1 };
+  else if (weg(/\s(?:(?:elke|iedere)\s+dag|dagelijks)\s/i)) herhaal = { type: 'dag', n: 1 };
+  else if (weg(/\s(?:(?:elke|iedere)\s+week|wekelijks)\s/i)) herhaal = { type: 'week', n: 1 };
+  else if (weg(/\s(?:(?:elke|iedere)\s+maand|maandelijks)\s/i)) herhaal = { type: 'maand', n: 1 };
+  else if (weg(/\s(?:(?:elk|ieder)\s+jaar|jaarlijks)\s/i)) herhaal = { type: 'jaar', n: 1 };
+  // Datum
+  if (!datum) {
+    if (weg(/\s(?:vandaag|vanavond|vanmiddag|vanochtend)\s/i)) datum = t;
+    else if (weg(/\sovermorgen\s/i)) datum = addDays(t, 2);
+    else if (weg(/\smorgen(?:ochtend|middag|avond|vroeg)?\s/i)) datum = addDays(t, 1);
+    else if ((m = weg(/\sover\s+(\d{1,2}|een|twee|drie|vier)\s+(dag|dagen|week|weken)\s/i))) { const n = { een: 1, twee: 2, drie: 3, vier: 4 }[m[1].toLowerCase()] || Number(m[1]); datum = addDays(t, /we/i.test(m[2]) ? 7 * n : n); }
+    else if ((m = weg(new RegExp(`\\s(?:op\\s+)?(volgende\\s+week\\s+|volgende\\s+|aanstaande\\s+|komende\\s+)?(${WD_RE})\\s`, 'i')))) {
+      datum = volgendeWd(DAGNAMEN[m[2].toLowerCase()]);
+      if (m[1] && /volgende/i.test(m[1]) && datum < addDays(maandagVan(t), 7)) datum = addDays(datum, 7);
+    }
+    else if (weg(/\svolgende\s+week\s/i)) datum = addDays(maandagVan(t), 7);
+    else if ((m = weg(new RegExp(`\\s(?:op\\s+)?(?:de\\s+)?(\\d{1,2})(?:e|ste|de)?\\s+(${MAAND_RE})\\.?\\s`, 'i')))) datum = datumUit(Number(m[1]), MAANDNR[m[2].toLowerCase()]);
+    else if ((m = weg(/\s(?:op\s+)?(\d{1,2})[-\/](\d{1,2})(?:[-\/](\d{2,4}))?\s/))) datum = datumUit(Number(m[1]), Number(m[2]) - 1, m[3]);
+    else if ((m = weg(/\s(?:op\s+)?(?:de\s+)?(\d{1,2})(?:e|ste|de)\s/i))) datum = datumUit(Number(m[1]));
+  }
+  // Tijd
+  if ((m = weg(/\s(?:om\s+)?(\d{1,2})[:.](\d{2})(?:\s*uur)?\s/i))) tijd = tijdUit(+m[1], +m[2], false);
+  else if ((m = weg(/\som\s+half\s+(\d{1,2})\s/i))) tijd = tijdUit(+m[1] - 1, 30, true);
+  else if ((m = weg(/\s(?:om\s+)?(\d{1,2})\s*(?:uur|u)\s/i)) || (m = weg(/\som\s+(\d{1,2})\s/i))) tijd = tijdUit(+m[1], 0, true);
+  if (tijd && middag && Number(tijd.slice(0, 2)) < 12) tijd = pad(Number(tijd.slice(0, 2)) + 12) + tijd.slice(2);
+  s = s.replace(/\s's\s+(?:avonds|middags|ochtends)\s/i, ' ');
+  // Prioriteit: ! = belangrijk, !! = dringend
+  if (/!!/.test(s) || /\s(?:dringend|urgent)\s/i.test(s)) prio = 2; else if (/!/.test(s)) prio = 1;
+  s = s.replace(/!+/g, ' ');
+  let titel = s.replace(/\s+/g, ' ').trim()
+    .replace(/^(?:ik\s+)?(?:moet|wil|ga|moeten)\s+(?:ik\s+)?/i, '').replace(/^(?:nog|even|ook)\s+/i, '')
+    .replace(/\s+(?:om|op|de|voor|en|nog)$/i, '').replace(/^[,.:;\-\s]+|[,.:;\-\s]+$/g, '').trim();
+  if (!titel) titel = invoer.trim();
+  titel = titel.charAt(0).toUpperCase() + titel.slice(1);
+  const datumGevonden = !!datum;
+  if (herhaal && !datum) datum = t;
+  return { titel, datum: datum || basis, tijd, herhaal, prio, gevonden: datumGevonden || !!tijd || !!herhaal || prio > 0, datumGevonden };
+}
+function datumHint(p) {
+  if (!p.gevonden) return '';
+  return `${p.datumGevonden || p.herhaal ? '📅 ' + dagLabel(p.datum) : ''}${p.tijd ? ' · ⏰ ' + p.tijd : ''}${p.herhaal ? ' · 🔁 ' + herhaalLabel(p.herhaal) : ''}${p.prio === 2 ? ' · 🔴 dringend' : p.prio === 1 ? ' · 🟡 belangrijk' : ''} → <b>${esc(p.titel)}</b>`;
+}
+
 /* ---------- Coach → taken en gewoontes ("hoofd leegmaken") ---------- */
 const HERHAAL_TYPES = ['dag', 'werkdagen', 'week', 'maand', 'jaar'];
 function actieInstructie() {
@@ -676,7 +747,7 @@ function actieInstructie() {
 \`\`\`
 Regels:
 - titel: kort en concreet, begin met een werkwoord. Eén taak per ding; geen dubbele.
-- datum: JJJJ-MM-DD of null als er geen dag genoemd is. Vandaag is ${WD_LANG[parse(t).getDay()]} ${t}. Komende dagen: ${dagen}. "Volgende week" zonder dag = maandag van volgende week.
+- datum: JJJJ-MM-DD of null als er geen dag genoemd is. Vandaag is ${WD_LANG[parse(t).getDay()]} ${t}. Komende dagen: ${dagen}. "Volgende week" zonder dag = maandag van volgende week. Alleen een dagnummer ("de 24e") = eerstvolgende datum met dat nummer (deze maand, of volgende maand als die al geweest is).
 - tijd: "UU:MM" of "" als er geen tijd genoemd is.
 - prio: 0 normaal, 1 belangrijk, 2 deadline/dringend.
 - herhaal: null, of {"type":"dag|werkdagen|week|maand|jaar","n":1} als het terugkomt ("elke vrijdag" = week met de datum van de eerstvolgende vrijdag).
@@ -1389,15 +1460,21 @@ document.addEventListener('submit', e => {
   }
   const v = f.elements[0].value.trim(); if (!v) return;
   if (f.dataset.form === 'snel' || f.dataset.form === 'agendataak') {
-    const datum = f.dataset.form === 'snel' ? ui.dag : ui.agendaDag;
-    state.taken.push({ id: uid(), titel: v, datum, tijd: '', prio: 0, notitie: '', klaar: false, klaarOp: null, verschoven: 0, aangemaakt: vandaag() });
-    bewaar(); render(); toast('Taak toegevoegd');
+    const p = leesDatum(v, f.dataset.form === 'snel' ? ui.dag : ui.agendaDag);
+    state.taken.push({ id: uid(), titel: p.titel, datum: p.datum, tijd: p.tijd, prio: p.prio, herhaal: p.herhaal, subtaken: [], notitie: '', klaar: false, klaarOp: null, verschoven: 0, aangemaakt: vandaag() });
+    bewaar(); render();
+    toast(p.datumGevonden && p.datum !== (f.dataset.form === 'snel' ? ui.dag : ui.agendaDag) ? `📅 Gepland op ${dagLabel(p.datum).toLowerCase()}${p.tijd ? ' om ' + p.tijd : ''}` : 'Taak toegevoegd');
     document.querySelector(`[data-form=${f.dataset.form}] input`)?.focus();
   }
   if (f.dataset.form === 'coach') vraagCoach(v);
 });
 let dagboekTimer;
 document.addEventListener('input', e => {
+  const sf = e.target.closest('[data-form=snel],[data-form=agendataak]');
+  if (sf) {
+    const hint = sf.nextElementSibling?.classList.contains('hint') ? sf.nextElementSibling : null;
+    if (hint) hint.innerHTML = e.target.value.trim() ? datumHint(leesDatum(e.target.value, sf.dataset.form === 'snel' ? ui.dag : ui.agendaDag)) : '';
+  }
   if (e.target.dataset.inp === 'dagboek') {
     const d = ui.dag, v = e.target.value;
     clearTimeout(dagboekTimer);
@@ -1428,7 +1505,7 @@ function snapshot() {
 $('#toast').addEventListener('click', e => { if (e.target.closest('.undo') && undoFn) { const f = undoFn; undoFn = null; f(); } });
 function confetti(n = 60) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const c = $('#confetti'), kl = ['#C6FF3D', '#FF7A1A', '#FFC83D', '#4DA3FF', '#FF4D8D'];
+  const c = $('#confetti'), kl = ['#A47BFF', '#6E7BFF', '#4F9DFF', '#FF8FC8', '#FFCB66'];
   for (let i = 0; i < n; i++) {
     const s = document.createElement('i');
     const hoek = Math.random() * Math.PI * 2, afst = 120 + Math.random() * 280;

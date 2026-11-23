@@ -1,19 +1,22 @@
 /* Ritme — donker, strak, uitdagend */
 :root {
-  --bg: #0B0D10;
-  --surface: #14171C;
-  --surface2: #1C2027;
-  --track: #232831;
-  --line: #2A303A;
-  --text: #F2F4F7;
-  --muted: #8A93A3;
-  --dim: #5C6473;
-  --accent: #C6FF3D;
-  --accent-ink: #0B0D10;
-  --fire: #FF7A1A;
-  --red: #FF4D5E;
-  --gold: #FFC83D;
-  --blue: #4DA3FF;
+  --bg: #0A0B1A;
+  --surface: #131530;
+  --surface2: #1B1E3D;
+  --track: #272B52;
+  --line: #262A50;
+  --text: #EEF0FF;
+  --muted: #9CA2CC;
+  --dim: #636A9C;
+  --accent: #9D84FF;
+  --accent-2: #5B9BFF;
+  --grad: linear-gradient(135deg, #A47BFF 0%, #6E7BFF 55%, #4F9DFF 100%);
+  --glow: 0 6px 24px -6px rgba(124, 99, 255, .55);
+  --accent-ink: #FFFFFF;
+  --fire: #FF9A6B;
+  --red: #FF5F80;
+  --gold: #FFCB66;
+  --blue: #5BA8FF;
   --r: 18px;
   --head: "Space Grotesk", system-ui, sans-serif;
   --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -48,7 +51,7 @@ h1, h2, h3 { font-family: var(--head); margin: 0; letter-spacing: -.01em; }
 
 /* ---------- Navigatie ---------- */
 #nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 8px 12px calc(10px + var(--safe-b)); background: linear-gradient(transparent, var(--bg) 35%); }
-#nav .bar { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(20,23,28,.92); backdrop-filter: blur(14px); border: 1px solid var(--line); border-radius: 22px; padding: 6px; }
+#nav .bar { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(19,21,48,.92); backdrop-filter: blur(14px); border: 1px solid var(--line); border-radius: 22px; padding: 6px; }
 #nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; border-radius: 16px; color: var(--dim); font-size: 11px; font-weight: 600; }
 #nav button svg { width: 22px; height: 22px; }
 #nav button.on { color: var(--accent-ink); background: var(--accent); }
@@ -75,7 +78,7 @@ h1, h2, h3 { font-family: var(--head); margin: 0; letter-spacing: -.01em; }
 .tag.red { background: rgba(255,77,94,.14); color: var(--red); }
 .tag.gold { background: rgba(255,200,61,.14); color: var(--gold); }
 .tag.fire { background: rgba(255,122,26,.14); color: var(--fire); }
-.tag.lime { background: rgba(198,255,61,.12); color: var(--accent); }
+.tag.lime { background: rgba(157,132,255,.12); color: var(--accent); }
 .leeg { text-align: center; color: var(--muted); padding: 18px 10px; font-size: 14px; }
 .row { display: flex; align-items: center; gap: 10px; }
 .grow { flex: 1; min-width: 0; }
@@ -95,7 +98,7 @@ h1, h2, h3 { font-family: var(--head); margin: 0; letter-spacing: -.01em; }
 
 /* ---------- Hero ---------- */
 .hero { display: flex; align-items: center; gap: 18px; padding: 18px; position: relative; overflow: hidden; }
-.hero::before { content: ""; position: absolute; right: -60px; top: -60px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(198,255,61,.14), transparent 70%); pointer-events: none; }
+.hero::before { content: ""; position: absolute; right: -60px; top: -60px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(157,132,255,.14), transparent 70%); pointer-events: none; }
 .hero .big { position: relative; flex: none; }
 .hero .big .pct { position: absolute; inset: 0; display: grid; place-items: center; font: 700 26px var(--head); }
 .hero .big .pct small { display: block; font-size: 10px; color: var(--muted); font-family: var(--body); text-align: center; letter-spacing: .08em; margin-top: -4px; }
@@ -155,7 +158,7 @@ details.klaarlijst summary::-webkit-details-marker { display: none; }
 /* ---------- Logboek ---------- */
 .moods { display: flex; gap: 6px; margin-bottom: 10px; }
 .moods button { flex: 1; font-size: 24px; padding: 8px 0; border-radius: 12px; background: var(--surface2); border: 1px solid var(--line); filter: grayscale(1); opacity: .55; }
-.moods button.on { filter: none; opacity: 1; border-color: var(--accent); background: rgba(198,255,61,.08); }
+.moods button.on { filter: none; opacity: 1; border-color: var(--accent); background: rgba(157,132,255,.08); }
 .logitem { border-left: 3px solid var(--line); padding: 2px 0 2px 12px; margin-bottom: 16px; }
 .logitem h3 { font-size: 15px; display: flex; gap: 8px; align-items: center; }
 .logitem p { margin: 6px 0 0; white-space: pre-wrap; }
@@ -183,18 +186,18 @@ details.klaarlijst summary::-webkit-details-marker { display: none; }
 .dagdetail h2 { font-size: 18px; text-transform: capitalize; }
 .mini-hab { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .mini-hab span { font-size: 12.5px; padding: 4px 9px; border-radius: 9px; background: var(--surface2); display: flex; gap: 5px; align-items: center; }
-.mini-hab span.klaar { background: rgba(198,255,61,.12); color: var(--accent); }
+.mini-hab span.klaar { background: rgba(157,132,255,.12); color: var(--accent); }
 .mini-hab span.gemist { background: rgba(255,77,94,.12); color: var(--red); }
 .mini-hab span.skip { background: rgba(255,200,61,.12); color: var(--gold); }
 .groep { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: capitalize; margin: 14px 2px 6px; }
 
 /* ---------- Uitdaging ---------- */
-.chal-hero { text-align: center; padding: 24px 16px 20px; background: radial-gradient(120% 90% at 50% 0%, rgba(255,122,26,.18), transparent 60%), var(--surface); }
+.chal-hero { text-align: center; padding: 24px 16px 20px; background: radial-gradient(120% 90% at 50% 0%, rgba(140,100,255,.28), transparent 60%), var(--surface); }
 .chal-hero .dagnr { font: 700 64px/1 var(--head); letter-spacing: -.03em; }
 .chal-hero .dagnr small { font-size: 22px; color: var(--muted); }
 .chal-hero .lbl { text-transform: uppercase; letter-spacing: .16em; font-size: 11px; color: var(--fire); font-weight: 700; }
 .pbar { height: 12px; border-radius: 99px; background: var(--track); overflow: hidden; margin: 16px 0 8px; }
-.pbar span { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--fire), var(--gold) 60%, var(--accent)); box-shadow: 0 0 18px rgba(255,122,26,.5); transition: width .6s; }
+.pbar span { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #4F9DFF, #9D84FF 55%, #FF8FC8); box-shadow: 0 0 18px rgba(140,100,255,.55); transition: width .6s; }
 .chal-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .chal-stats div { background: var(--surface2); border-radius: 12px; padding: 9px 4px; }
 .chal-stats b { display: block; font: 700 20px var(--head); }
@@ -211,7 +214,7 @@ details.klaarlijst summary::-webkit-details-marker { display: none; }
 .regels li { margin-bottom: 4px; }
 .keuze { display: grid; gap: 8px; }
 .keuze label { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--line); cursor: pointer; }
-.keuze label:has(input:checked) { border-color: var(--accent); background: rgba(198,255,61,.07); }
+.keuze label:has(input:checked) { border-color: var(--accent); background: rgba(157,132,255,.07); }
 .keuze input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
 .keuze .t { font-weight: 600; }
 .keuze small { display: block; color: var(--muted); font-weight: 400; }
@@ -314,13 +317,13 @@ details.klaarlijst summary::-webkit-details-marker { display: none; }
 .hab-acts button.big.teller::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--p) * 100%); background: color-mix(in srgb, var(--c) 40%, transparent); transition: height .3s; }
 .hab-acts button.big.teller span { position: relative; }
 .heat i.mini { background: color-mix(in srgb, var(--c) 45%, var(--surface2)); }
-.mini-hab span.mini { background: rgba(198,255,61,.07); color: var(--accent); border: 1px dashed rgba(198,255,61,.4); }
+.mini-hab span.mini { background: rgba(157,132,255,.07); color: var(--accent); border: 1px dashed rgba(157,132,255,.4); }
 
 .acties { display: grid; gap: 7px; }
 .actie { display: flex; align-items: center; gap: 12px; text-align: left; padding: 11px 12px; border-radius: 14px; background: var(--surface2); border: 1px solid var(--line); }
 .actie .ai { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--track); font: 700 17px var(--head); flex: none; }
 .actie small { display: block; color: var(--muted); font-size: 12px; }
-.actie.on { border-color: var(--accent); background: rgba(198,255,61,.08); }
+.actie.on { border-color: var(--accent); background: rgba(157,132,255,.08); }
 .actie.on .ai { background: var(--accent); color: var(--accent-ink); }
 .stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface2); border-radius: 16px; padding: 10px; margin-bottom: 12px; }
 .stepper .btn { width: 54px; height: 54px; font-size: 26px; padding: 0; }
@@ -340,7 +343,7 @@ details.klaarlijst summary::-webkit-details-marker { display: none; }
 #toast .undo { background: var(--bg); color: var(--accent); border-radius: 9px; padding: 4px 10px; font-weight: 700; font-size: 13px; flex: none; }
 
 #focus { position: fixed; left: 0; right: 0; bottom: calc(84px + var(--safe-b)); z-index: 29; padding: 0 12px; }
-#focus .fpan { max-width: 520px; margin: 0 auto; background: rgba(20,23,28,.96); backdrop-filter: blur(14px); border: 1px solid rgba(77,163,255,.45); border-radius: 18px; padding: 10px 12px; overflow: hidden; position: relative; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+#focus .fpan { max-width: 520px; margin: 0 auto; background: rgba(19,21,48,.96); backdrop-filter: blur(14px); border: 1px solid rgba(77,163,255,.45); border-radius: 18px; padding: 10px 12px; overflow: hidden; position: relative; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
 #focus .fbar { position: absolute; left: 0; top: 0; right: 0; height: 3px; background: var(--track); }
 #focus .fbar span { display: block; height: 100%; background: var(--blue); transition: width 1s linear; }
 #focus b { font: 700 20px var(--head); font-variant-numeric: tabular-nums; margin-right: 6px; }
@@ -359,7 +362,7 @@ body.focus-aan #toast { bottom: calc(160px + var(--safe-b)); }
 .chatform .btn { height: 46px; }
 .chatform .mic { width: 46px; padding: 0; font-size: 18px; flex: none; }
 .chatform .mic.opname { background: var(--red); border-color: var(--red); animation: puls 1.2s infinite; }
-.actiekaart { align-self: stretch; background: var(--surface2); border: 1px solid rgba(198,255,61,.35); border-radius: 16px; padding: 10px; display: grid; gap: 6px; }
+.actiekaart { align-self: stretch; background: var(--surface2); border: 1px solid rgba(157,132,255,.35); border-radius: 16px; padding: 10px; display: grid; gap: 6px; }
 .actiekaart label { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 11px; background: var(--surface); cursor: pointer; }
 .actiekaart label:has(input:not(:checked)) { opacity: .45; }
 .actiekaart input { width: 19px; height: 19px; accent-color: var(--accent); flex: none; margin-top: 1px; padding: 0; }
@@ -369,3 +372,63 @@ body.focus-aan #toast { bottom: calc(160px + var(--safe-b)); }
 .actiekaart, .actiekaart label, .actiekaart span { min-width: 0; }
 .actiekaart span { flex: 1; overflow-wrap: anywhere; }
 .chat { min-width: 0; }
+
+/* =========================================================
+   Thema: nachtblauw met paars → blauw
+   ========================================================= */
+body {
+  background:
+    radial-gradient(900px 520px at 0% -10%, rgba(130, 92, 255, .20), transparent 60%),
+    radial-gradient(800px 500px at 110% 0%, rgba(64, 140, 255, .14), transparent 60%),
+    radial-gradient(700px 600px at 50% 120%, rgba(110, 80, 255, .10), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+#top { background: linear-gradient(rgba(10,11,26,.92) 70%, transparent); backdrop-filter: blur(6px); }
+.logo i { background: var(--grad); box-shadow: 0 0 16px rgba(140,110,255,.9); }
+.logo { background: linear-gradient(90deg, #fff, #C9C0FF); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* Kaarten: subtiele glans en diepte */
+.card, .hab, .task, .tile, .actie, .cel {
+  background-image: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 60%);
+}
+.card, .hab, .tile { box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 12px 32px -20px rgba(0,0,0,.8); border-color: rgba(140,130,255,.12); }
+.task { border-color: rgba(140,130,255,.10); }
+
+/* Alles wat "aan" of "gedaan" is: paars-blauw verloop */
+.btn.pri, #nav button.on, .chip.on, .lvl b, .task.klaar .chk, .cel.perfect, .grid60 .ok,
+.wdsel label:has(input:checked), .msg.user, .actie.on .ai, .schakel input[type=checkbox]:checked, .lvl .xpbar span {
+  background: var(--grad); border-color: transparent; color: #fff;
+}
+.btn.pri, #nav button.on { box-shadow: var(--glow); }
+.chip.on, .wdsel label:has(input:checked) { box-shadow: 0 4px 14px -6px rgba(124,99,255,.7); }
+.cel.perfect { box-shadow: 0 6px 18px -8px rgba(124,99,255,.8); }
+.cel.perfect .dots i { background: #fff; }
+.cel.heat { background-color: color-mix(in srgb, #8C6CFF calc(var(--h) * 45%), var(--surface)); background-image: none; }
+.schakel input[type=checkbox]:checked::after { background: #fff; }
+.task.klaar .chk { color: #fff; }
+#nav .bar { background: rgba(17,19,44,.85); border-color: rgba(140,130,255,.16); box-shadow: 0 16px 40px -12px rgba(0,0,0,.7); }
+#nav button { color: #6E75A8; }
+.dag.vandaag small { color: #B9A8FF; }
+.dag.sel { background: linear-gradient(180deg, rgba(157,132,255,.22), rgba(91,155,255,.10)); color: #fff; }
+.dag.sel::after { background: var(--accent); }
+.hero { background-image: linear-gradient(135deg, rgba(157,132,255,.12), rgba(91,155,255,.05) 60%, transparent); border-color: rgba(157,132,255,.22); }
+.hero::before { background: radial-gradient(circle, rgba(157,132,255,.30), transparent 70%); }
+.hero .stats span[style*="--fire"] { color: var(--fire); }
+.chal-hero .lbl { color: #B9A8FF; }
+.grid60 .bezig { outline-color: var(--accent); color: var(--accent); }
+@keyframes puls { 50% { box-shadow: 0 0 16px rgba(157,132,255,.7); } }
+.bars .b span { background: var(--grad); }
+.bars .b span.mid { background: linear-gradient(180deg, rgba(157,132,255,.65), rgba(91,155,255,.35)); }
+.bars .b.nu small { color: var(--accent); }
+.tile .acc { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tag.lime { color: #C2B3FF; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(157,132,255,.18); }
+#toast { background: #F1EEFF; color: #15173A; box-shadow: 0 10px 30px -8px rgba(0,0,0,.6); }
+#toast .undo { background: var(--grad); color: #fff; }
+.reviewkaart { border-color: rgba(91,155,255,.4); background: linear-gradient(90deg, rgba(91,155,255,.16), rgba(157,132,255,.08) 60%, var(--surface)); }
+.actiekaart { border-color: rgba(157,132,255,.35); }
+.actiekaart input, .keuze input, .sub input { accent-color: #8C6CFF; }
+.hint { font-size: 12.5px; color: var(--muted); margin: -4px 2px 10px; min-height: 0; }
+.hint:empty { display: none; }
+.hint b { color: var(--text); font-weight: 600; }
