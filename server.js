@@ -31,7 +31,7 @@ function cloudChat(req, res) {
       const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json", "X-Title": "Ritme" },
-        body: JSON.stringify({ model: CLOUD_MODEL, temperature: 0.3, max_tokens: 1200, messages: vraag.messages })
+        body: JSON.stringify({ model: CLOUD_MODEL, temperature: 0.3, max_tokens: 2000, messages: vraag.messages })
       });
       const j = await r.json();
       if (!j.choices) return res.end(JSON.stringify({ error: (j.error && j.error.message) || "OpenRouter gaf geen antwoord" }) + "\n");

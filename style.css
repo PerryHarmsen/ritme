@@ -352,3 +352,20 @@ body.focus-aan #toast { bottom: calc(160px + var(--safe-b)); }
 .reviewkaart { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border-color: rgba(77,163,255,.45); background: linear-gradient(90deg, rgba(77,163,255,.12), var(--surface)); }
 .reviewkaart small { display: block; color: var(--muted); font-size: 12.5px; }
 .reviewkaart svg { width: 18px; height: 18px; color: var(--blue); }
+
+/* ---------- Coach → taken ---------- */
+.chatform { align-items: flex-end; }
+.chatform textarea { flex: 1; min-height: 46px; resize: none; line-height: 1.4; }
+.chatform .btn { height: 46px; }
+.chatform .mic { width: 46px; padding: 0; font-size: 18px; flex: none; }
+.chatform .mic.opname { background: var(--red); border-color: var(--red); animation: puls 1.2s infinite; }
+.actiekaart { align-self: stretch; background: var(--surface2); border: 1px solid rgba(198,255,61,.35); border-radius: 16px; padding: 10px; display: grid; gap: 6px; }
+.actiekaart label { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 11px; background: var(--surface); cursor: pointer; }
+.actiekaart label:has(input:not(:checked)) { opacity: .45; }
+.actiekaart input { width: 19px; height: 19px; accent-color: var(--accent); flex: none; margin-top: 1px; padding: 0; }
+.actiekaart b { display: block; font-weight: 600; font-size: 14px; }
+.actiekaart small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.actiekaart.klaar { color: var(--accent); font-weight: 600; font-size: 13.5px; padding: 10px 12px; }
+.actiekaart, .actiekaart label, .actiekaart span { min-width: 0; }
+.actiekaart span { flex: 1; overflow-wrap: anywhere; }
+.chat { min-width: 0; }

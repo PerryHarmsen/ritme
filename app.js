@@ -653,21 +653,99 @@ function mdLite(s) {
 }
 function viewCoach() {
   const ins = inzichten();
-  const snel = ['Geef me een eerlijke weekreview', 'Waarom haak ik steeds af?', 'Plan morgen met mij', 'Daag me uit voor deze week'];
+  const snel = ['🧠 Hoofd leegmaken', '📋 Plak uit ChatGPT', 'Plan morgen met mij', 'Geef me een eerlijke weekreview', 'Waarom haak ik steeds af?'];
+  const spraak = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
   return `<div class="sec" style="margin-top:12px"><h2>Wat opvalt</h2><span class="cnt">werkt altijd, ook offline</span></div>
   ${ins.map(x => `<div class="card inzicht"><div class="ico">${x.i}</div><div><h3>${esc(x.t)}</h3><p>${esc(x.p)}</p></div></div>`).join('')}
   <div class="sec"><h2>Coach</h2><span class="cnt">${!['localhost', '127.0.0.1'].includes(location.hostname) ? (lokaal('geheim').openrouter ? 'Claude Haiku (eigen sleutel)' : 'geen sleutel — zie ⚙️') : state.inst.ai === 'cloud' ? 'cloud (Claude Haiku)' : 'lokaal (Ollama)'}</span>${state.coach.length ? '<button class="btn sm r" data-act="wiscoach">Wissen</button>' : ''}</div>
   <div class="card">
-    <div class="chat" id="chat">${state.coach.length ? state.coach.map(m => `<div class="msg ${m.rol}">${m.rol === 'ai' ? mdLite(m.tekst) : esc(m.tekst)}</div>`).join('') : '<div class="msg ai"><p>Ik ken je gewoontes, reeksen, taken en logboek. Vraag me wat je wilt — ik ben eerlijk, ook als het tegenvalt.</p></div>'}${ui.coachBezig ? '<div class="msg ai denk">Coach denkt na…</div>' : ''}</div>
+    <div class="chat" id="chat">${state.coach.length ? state.coach.map((m, i) => `<div class="msg ${m.rol}">${m.rol === 'ai' ? mdLite(m.tekst) : esc(m.tekst)}</div>${m.rol === 'ai' ? actieKaart(m, i) : ''}`).join('') : '<div class="msg ai"><p>Ik ken je gewoontes, reeksen, taken en logboek. Vraag me wat je wilt — ik ben eerlijk, ook als het tegenvalt.</p><p><b>Tip:</b> vertel me gewoon alles wat je moet doen (typen, praten 🎤 of plakken uit ChatGPT). Ik maak er taken van met datum en al — jij kiest wat erin komt.</p></div>'}${ui.coachBezig ? '<div class="msg ai denk">Coach denkt na…</div>' : ''}</div>
     <div class="chips" style="margin-top:12px">${snel.map(s => `<button class="chip" data-act="coachsnel" data-q="${esc(s)}">${esc(s)}</button>`).join('')}</div>
-    <form class="chatform" data-form="coach"><input name="q" placeholder="Vraag je coach…" autocomplete="off" ${ui.coachBezig ? 'disabled' : ''}><button class="btn pri" ${ui.coachBezig ? 'disabled' : ''}>${ic('send')}</button></form>
+    <form class="chatform" data-form="coach"><textarea name="q" rows="1" placeholder="Vraag je coach, of vertel wat je moet doen…" ${ui.coachBezig ? 'disabled' : ''}></textarea>
+      ${spraak ? `<button type="button" class="btn mic" data-act="mic" title="Inspreken">🎤</button>` : ''}<button class="btn pri" ${ui.coachBezig ? 'disabled' : ''}>${ic('send')}</button></form>
   </div>`;
 }
+/* ---------- Coach → taken en gewoontes ("hoofd leegmaken") ---------- */
+const HERHAAL_TYPES = ['dag', 'werkdagen', 'week', 'maand', 'jaar'];
+function actieInstructie() {
+  const t = vandaag();
+  const dagen = Array.from({ length: 14 }, (_, i) => { const d = addDays(t, i); return `${WD_LANG[parse(d).getDay()]} = ${d}`; }).join(', ');
+  return `\n\nTAKEN HERKENNEN: Noemt de gebruiker dingen die hij moet of wil doen (ook in een lange tekst, ingesproken tekst of een geplakt ChatGPT-gesprek), of vraagt hij je iets te plannen? Zet dan HELEMAAL ONDERAAN je antwoord precies één blok:
+\`\`\`acties
+{"taken":[{"titel":"Portfolio inleveren","datum":"2026-01-30","tijd":"17:00","prio":2,"herhaal":null,"subtaken":["Bronnen checken"]}],"gewoontes":[{"naam":"20 min lezen","emoji":"📚","mini":"1 bladzijde"}]}
+\`\`\`
+Regels:
+- titel: kort en concreet, begin met een werkwoord. Eén taak per ding; geen dubbele.
+- datum: JJJJ-MM-DD of null als er geen dag genoemd is. Vandaag is ${WD_LANG[parse(t).getDay()]} ${t}. Komende dagen: ${dagen}. "Volgende week" zonder dag = maandag van volgende week.
+- tijd: "UU:MM" of "" als er geen tijd genoemd is.
+- prio: 0 normaal, 1 belangrijk, 2 deadline/dringend.
+- herhaal: null, of {"type":"dag|werkdagen|week|maand|jaar","n":1} als het terugkomt ("elke vrijdag" = week met de datum van de eerstvolgende vrijdag).
+- subtaken: alleen als een taak duidelijk uit stappen bestaat.
+- gewoontes: alleen voor iets dat de gebruiker (bijna) dagelijks wil gaan doen voor zichzelf; met een kleine "mini"-versie.
+- Alleen NIEUWE dingen uit het LAATSTE bericht van de gebruiker. Wat al in de open taken (zie data) of in eerdere berichten staat, zet je NIET opnieuw klaar.
+- In je gewone tekst NIET de JSON herhalen; zeg kort wat je hebt klaargezet en geef 1 tip (bijv. wat het eerst moet). Geen taken genoemd? Dan geen blok.`;
+}
+function haalActies(tekst) {
+  const m = tekst.match(/```(?:acties|json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (!m) return { tekst, acties: null };
+  let a = null;
+  try {
+    const j = JSON.parse(m[1]);
+    a = {
+      taken: (j.taken || []).filter(x => x && x.titel).slice(0, 40).map(x => ({
+        titel: String(x.titel).slice(0, 140),
+        datum: /^\d{4}-\d{2}-\d{2}$/.test(x.datum) ? x.datum : null,
+        tijd: /^\d{2}:\d{2}$/.test(x.tijd) ? x.tijd : '',
+        prio: [0, 1, 2].includes(Number(x.prio)) ? Number(x.prio) : 0,
+        herhaal: x.herhaal && HERHAAL_TYPES.includes(x.herhaal.type) ? { type: x.herhaal.type, n: Math.max(1, Number(x.herhaal.n) || 1) } : null,
+        subtaken: Array.isArray(x.subtaken) ? x.subtaken.filter(s => typeof s === 'string' && s.trim()).slice(0, 20) : []
+      })),
+      gewoontes: (j.gewoontes || []).filter(x => x && x.naam).slice(0, 5).map(x => ({ naam: String(x.naam).slice(0, 60), emoji: String(x.emoji || '✨').slice(0, 4), mini: String(x.mini || '').slice(0, 60) }))
+    };
+    if (!a.taken.length && !a.gewoontes.length) a = null;
+  } catch (e) { a = null; }
+  const rest = tekst.replace(m[0], '').trim();
+  return { tekst: rest || (a ? 'Ik heb dit voor je klaargezet:' : tekst), acties: a };
+}
+function actieKaart(m, i) {
+  const a = m.acties; if (!a) return '';
+  if (m.toegevoegd != null) return `<div class="actiekaart klaar">✅ ${m.toegevoegd} ${m.toegevoegd === 1 ? 'ding' : 'dingen'} in Ritme gezet</div>`;
+  // Staat iets al (bijna) zo in je open taken of gewoontes? Dan standaard uitgevinkt.
+  const norm = s => s.toLowerCase().replace(/[^a-z0-9à-ü]+/g, ' ').trim();
+  const bestaandT = new Set(state.taken.filter(k => !k.klaar).map(k => norm(k.titel)));
+  const bestaandG = new Set(actieveGewoontes().map(h => norm(h.naam)));
+  const items = [
+    ...a.taken.map((k, j) => ({ v: 't' + j, al: bestaandT.has(norm(k.titel)), html: `<b>📌 ${esc(k.titel)}</b><small>${bestaandT.has(norm(k.titel)) ? '⚠️ staat al in je lijst · ' : ''}${[k.datum ? dagLabel(k.datum, true) : 'geen datum', k.tijd, k.prio === 2 ? '🔴 deadline' : k.prio === 1 ? '🟡 belangrijk' : '', k.herhaal ? '🔁 ' + herhaalLabel(k.herhaal) : '', k.subtaken.length ? `☑ ${k.subtaken.length} subtaken` : ''].filter(Boolean).join(' · ')}</small>` })),
+    ...a.gewoontes.map((h, j) => ({ v: 'g' + j, al: bestaandG.has(norm(h.naam)), html: `<b>${esc(h.emoji)} Nieuwe gewoonte: ${esc(h.naam)}</b><small>${bestaandG.has(norm(h.naam)) ? '⚠️ heb je al · ' : ''}elke dag${h.mini ? ' · minimaal: ' + esc(h.mini) : ''}</small>` }))
+  ];
+  return `<div class="actiekaart" data-i="${i}">
+    ${items.map(x => `<label><input type="checkbox" value="${x.v}" ${x.al ? '' : 'checked'}><span>${x.html}</span></label>`).join('')}
+    <button class="btn pri full" data-act="coachtoevoegen" data-i="${i}">${ic('plus')}Zet in Ritme</button>
+    <p class="uitleg" style="margin:6px 0 0;text-align:center">Vink uit wat niet klopt. Daarna kun je alles nog aanpassen.</p></div>`;
+}
+// Inspreken: tekst komt in het invoerveld, jij verstuurt zelf
+let herkenner = null;
+function spreek(knop) {
+  const veld = document.querySelector('[data-form=coach] textarea');
+  if (herkenner) { herkenner.stop(); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast('Inspreken werkt niet in deze browser');
+  const r = new SR();
+  r.lang = 'nl-NL'; r.continuous = true; r.interimResults = true;
+  const basis = veld.value ? veld.value.trim() + ' ' : '';
+  r.onresult = e => { veld.value = basis + [...e.results].map(x => x[0].transcript).join(' '); veld.rows = Math.min(8, Math.max(2, Math.ceil(veld.value.length / 38))); };
+  r.onerror = e => { if (e.error === 'not-allowed') toast('Geef de app toegang tot je microfoon'); };
+  r.onend = () => { herkenner = null; knop.classList.remove('opname'); knop.textContent = '🎤'; };
+  herkenner = r; r.start();
+  knop.classList.add('opname'); knop.textContent = '⏹';
+  toast('Praat maar… tik ⏹ als je klaar bent');
+}
+
 async function vraagCoach(q) {
   if (!q || ui.coachBezig) return;
   state.coach.push({ rol: 'user', tekst: q });
   ui.coachBezig = true; bewaar(); render(); scrollChat();
-  const sys = `Je bent de coach in Ritme, een app voor gewoontes en taken. Je praat met een HBO ICT-student. Stijl: eerlijk, direct en uitdagend, maar warm. Gewoon Nederlands, kort (max ±130 woorden), concreet, eindig met 1–3 acties. Gebruik de data hieronder; verzin geen cijfers. Geen medische of financiële adviezen.\n\nDATA VAN DE GEBRUIKER:\n${profielVoorAI()}`;
+  const sys = `Je bent de coach in Ritme, een app voor gewoontes en taken. Je praat met een HBO ICT-student. Stijl: eerlijk, direct en uitdagend, maar warm. Gewoon Nederlands, kort (max ±130 woorden), concreet, eindig met 1–3 acties. Gebruik de data hieronder; verzin geen cijfers. Geen medische of financiële adviezen.\n\nDATA VAN DE GEBRUIKER:\n${profielVoorAI()}` + actieInstructie();
   const geschiedenis = state.coach.slice(-10).map(m => ({ role: m.rol === 'user' ? 'user' : 'assistant', content: m.tekst }));
   const messages = [{ role: 'system', content: sys }, ...geschiedenis];
   let antwoord;
@@ -678,7 +756,7 @@ async function vraagCoach(q) {
       // Op je telefoon: rechtstreeks naar OpenRouter met je eigen sleutel (die alleen op dit toestel staat)
       const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST', headers: { 'Authorization': 'Bearer ' + sleutel, 'Content-Type': 'application/json', 'X-Title': 'Ritme' },
-        body: JSON.stringify({ model: 'anthropic/claude-haiku-5.5', temperature: .5, max_tokens: 900, messages })
+        body: JSON.stringify({ model: 'anthropic/claude-haiku-5.5', temperature: .4, max_tokens: 1800, messages })
       });
       const j = await r.json();
       if (!j.choices) throw new Error(j.error?.message || 'OpenRouter gaf geen antwoord');
@@ -700,7 +778,8 @@ async function vraagCoach(q) {
         ? 'Ik kan de AI niet bereiken. Start de app via **Start Ritme.cmd** op je laptop (en zorg dat Ollama draait). De inzichten hierboven werken wel altijd.'
         : 'Er ging iets mis: ' + e.message;
   }
-  state.coach.push({ rol: 'ai', tekst: antwoord });
+  const { tekst: schoon, acties } = haalActies(antwoord);
+  state.coach.push({ rol: 'ai', tekst: schoon, acties });
   state.coach = state.coach.slice(-40);
   ui.coachBezig = false; bewaar();
   if (ui.tab === 'coach') { render(); scrollChat(); }
@@ -1259,7 +1338,37 @@ const acties = {
   stopuitdaging: () => { if (!confirm('Uitdaging stoppen? Je voortgang wordt bewaard bij "eerdere pogingen".')) return; const us = uitdagingStatus(); state.geschiedenis.push({ start: us.u.start, duur: us.u.duur, gehaald: us.gehaald, voltooid: false }); state.uitdaging = null; bewaar(); render(); },
   herstartuitdaging: () => { const us = uitdagingStatus(); state.geschiedenis.push({ start: us.u.start, duur: us.u.duur, gehaald: us.gehaald, voltooid: false }); state.uitdaging = { ...us.u, start: vandaag() }; bewaar(); render(); toast('Dag 1. Nu écht. 🔥'); },
   afronduitdaging: () => { const us = uitdagingStatus(); state.geschiedenis.push({ start: us.u.start, duur: us.u.duur, gehaald: us.gehaald, voltooid: true }); state.uitdaging = null; bewaar(); render(); confetti(150); toast('🏆 Uitdaging voltooid! +500 XP'); checkLevelUp(); },
-  coachsnel: el => vraagCoach(el.dataset.q),
+  coachsnel: async el => {
+    const q = el.dataset.q, veld = document.querySelector('[data-form=coach] textarea');
+    if (q.startsWith('🧠')) { veld.placeholder = 'Gooi alles eruit: school, werk, thuis, afspraken, deadlines… Ik maak er taken van.'; veld.rows = 5; veld.focus(); return; }
+    if (q.startsWith('📋')) {
+      let tekst = '';
+      try { tekst = await navigator.clipboard.readText(); } catch (e) { /* geen toegang */ }
+      if (!tekst.trim()) { veld.placeholder = 'Plak hier (lang indrukken → Plakken) het stuk uit ChatGPT en tik op verzenden.'; veld.rows = 5; veld.focus(); return; }
+      return vraagCoach('Hier is een stuk uit mijn gesprek met ChatGPT. Haal eruit wat ik moet doen en zet het klaar:\n\n' + tekst.slice(0, 8000));
+    }
+    vraagCoach(q);
+  },
+  mic: el => spreek(el),
+  coachtoevoegen: el => {
+    const i = Number(el.dataset.i), m = state.coach[i]; if (!m?.acties) return;
+    const gekozen = new Set([...document.querySelectorAll(`.actiekaart[data-i="${i}"] input:checked`)].map(x => x.value));
+    if (!gekozen.size) return toast('Niets aangevinkt');
+    const terug = snapshot();
+    let n = 0;
+    m.acties.taken.forEach((k, j) => {
+      if (!gekozen.has('t' + j)) return;
+      state.taken.push({ id: uid(), titel: k.titel, datum: k.datum || (k.herhaal ? vandaag() : null), tijd: k.tijd, prio: k.prio, notitie: '', herhaal: k.herhaal, subtaken: k.subtaken.map(s => ({ id: uid(), titel: s, klaar: false })), klaar: false, klaarOp: null, verschoven: 0, aangemaakt: vandaag(), bron: 'coach' });
+      n++;
+    });
+    m.acties.gewoontes.forEach((h, j) => {
+      if (!gekozen.has('g' + j)) return;
+      state.gewoontes.push({ id: uid(), naam: h.naam, emoji: h.emoji, mini: h.mini, kleur: KLEUREN[state.gewoontes.length % KLEUREN.length], dagen: [0, 1, 2, 3, 4, 5, 6], herinnering: '', doel: 1, eenheid: '', minuten: 0, aangemaakt: vandaag(), archief: false });
+      n++;
+    });
+    m.toegevoegd = n;
+    bewaar(); render(); toast(`✅ ${n} ${n === 1 ? 'ding' : 'dingen'} in Ritme gezet`, terug);
+  },
   wiscoach: () => { state.coach = []; bewaar(); render(); }
 };
 document.addEventListener('click', e => {
@@ -1295,7 +1404,11 @@ document.addEventListener('input', e => {
     dagboekTimer = setTimeout(() => { state.dagboek[d] = state.dagboek[d] || {}; state.dagboek[d].tekst = v; bewaar(); }, 400);
   }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') sluitSheet(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') sluitSheet();
+  // Op de laptop: Enter = versturen, Shift+Enter = nieuwe regel
+  if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'q' && !matchMedia('(pointer: coarse)').matches) { e.preventDefault(); e.target.form.requestSubmit(); }
+});
 
 /* ---------- Toast & confetti ---------- */
 let toastTimer, undoFn = null;
