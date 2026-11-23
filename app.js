@@ -5,13 +5,25 @@
    ========================================================= */
 
 const OPSLAG = 'ritme-v1';
-const KLEUREN = ['#9D84FF', '#5BA8FF', '#FF8FC8', '#4FD8C4', '#FFB36B', '#C77DFF', '#7FD4FF'];
+const KLEUREN = ['#3D9BFF', '#2DD4BF', '#FF7A45', '#A78BFA', '#F472B6', '#FBBF24', '#34D399'];
 const WD = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
 const WD_LANG = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag'];
 const MAANDEN = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
 const WEEKORDE = [1, 2, 3, 4, 5, 6, 0];
 const MOODS = ['😩', '😕', '😐', '🙂', '🤩'];
 const TITELS = ['Starter', 'Opstarter', 'Volhouder', 'Doorzetter', 'Machine', 'Onbreekbaar', 'Legende'];
+const THEMAS = [
+  { id: 'ijs', naam: 'IJs', sub: 'licht & helder blauw', bg: '#F2F6FB', kaart: '#FFFFFF', acc: '#2F86F6', ext: '#FF7A45' },
+  { id: 'middernacht', naam: 'Middernacht', sub: 'zwart met blauw', bg: '#000000', kaart: '#18191E', acc: '#3D9BFF', ext: '#FF8A3D' },
+  { id: 'oceaan', naam: 'Oceaan', sub: 'donker petrol & mint', bg: '#061315', kaart: '#132B2F', acc: '#2DD4BF', ext: '#FBBF24' },
+  { id: 'zand', naam: 'Zand', sub: 'warm & rustig', bg: '#F5EFE5', kaart: '#FFFBF4', acc: '#CF5F38', ext: '#A86F12' },
+  { id: 'papier', naam: 'Papier', sub: 'zwart-wit, minimaal', bg: '#FAFAF7', kaart: '#FFFFFF', acc: '#111111', ext: '#FF6B00' }
+];
+function pasThemaToe() {
+  const t = THEMAS.find(x => x.id === state.inst.thema) || THEMAS[0];
+  document.documentElement.dataset.thema = t.id;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.bg);
+}
 const SJABLONEN = [
   { naam: '2 liter water', emoji: '💧' }, { naam: '30 min bewegen', emoji: '🏃' },
   { naam: '20 min lezen', emoji: '📚' }, { naam: '1 uur coderen', emoji: '💻' },
@@ -72,7 +84,7 @@ function nieuweState() {
   return {
     versie: 1, gewoontes: [], log: {}, taken: [], dagboek: {}, uitdaging: null, geschiedenis: [],
     coach: [], gemeld: {}, lv: 1, tellers: {}, focus: null, focusLog: [], reviews: {}, bijgewerkt: 0,
-    inst: { ai: 'lokaal', meldingen: false, avond: '21:00' }
+    inst: { ai: 'lokaal', meldingen: false, avond: '21:00', thema: 'ijs' }
   };
 }
 function vanJSON(s) { const st = Object.assign(nieuweState(), s); st.inst = Object.assign(nieuweState().inst, s.inst); return st; }
@@ -246,6 +258,7 @@ function uitdagingStatus() {
    Weergave
    ========================================================= */
 function render() {
+  pasThemaToe();
   renderTop();
   const v = $('#view');
   v.innerHTML = { vandaag: viewVandaag, agenda: viewAgenda, uitdaging: viewUitdaging, stats: viewStats, coach: viewCoach, logboek: viewLogboek, review: viewReview }[ui.tab]();
@@ -1235,6 +1248,8 @@ function instellingenForm() {
   const hs = state.gewoontes;
   const permissie = 'Notification' in window ? Notification.permission : 'niet';
   openSheet(`<h2>Instellingen</h2>
+  <h3>Stijl</h3>
+  <div class="themas">${THEMAS.map(t => `<button type="button" class="${(state.inst.thema || 'ijs') === t.id ? 'on' : ''}" data-x="thema" data-t="${t.id}"><div class="voorbeeld" style="background:${t.bg}"><i style="background:${t.kaart}"></i><i style="background:${t.acc}"></i><i style="background:${t.ext}"></i></div><b>${t.naam}</b><small class="muted" style="font-size:11px">${t.sub}</small></button>`).join('')}</div>
   <h3>Gewoontes</h3>
   ${hs.map((h, i) => `<div class="lijst-item"><span style="font-size:20px">${esc(h.emoji)}</span><span class="grow" style="${h.archief ? 'opacity:.5' : ''}">${esc(h.naam)}${h.archief ? ' <span class="tag">gepauzeerd</span>' : ''}</span>
     <button class="ibtn" data-x="op" data-i="${i}" title="Omhoog" ${i === 0 ? 'disabled' : ''}>${ic('left', '').replace('viewBox', 'style="transform:rotate(90deg)" viewBox')}</button>
@@ -1282,6 +1297,7 @@ function instellingenForm() {
       if (x === 'pauze') { hs[i].archief = !hs[i].archief; bewaar(); render(); instellingenForm(); }
       if (x === 'bewerk') gewoonteForm(hs[i]);
       if (x === 'nieuw') gewoonteForm();
+      if (x === 'thema') { state.inst.thema = b.dataset.t; bewaar(); render(); instellingenForm(); }
       if (x === 'export') exporteer();
       if (x === 'import') pan.querySelector('[data-x=bestand]').click();
       if (x === 'ticktick') pan.querySelector('[data-x=tickbestand]').click();
@@ -1505,7 +1521,7 @@ function snapshot() {
 $('#toast').addEventListener('click', e => { if (e.target.closest('.undo') && undoFn) { const f = undoFn; undoFn = null; f(); } });
 function confetti(n = 60) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const c = $('#confetti'), kl = ['#A47BFF', '#6E7BFF', '#4F9DFF', '#FF8FC8', '#FFCB66'];
+  const c = $('#confetti'), kl = [getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2F86F6', '#5BB8FF', '#FF7A45', '#FFC53D', '#2DD4BF'];
   for (let i = 0; i < n; i++) {
     const s = document.createElement('i');
     const hoek = Math.random() * Math.PI * 2, afst = 120 + Math.random() * 280;

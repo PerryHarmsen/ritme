@@ -1,6 +1,6 @@
 // Service worker: zorgt dat Ritme ook zonder internet opent.
 // Eerst het netwerk proberen (zo zie je updates meteen), anders de bewaarde kopie.
-const CACHE = "ritme-v5";
+const CACHE = "ritme-v6";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", e => {
