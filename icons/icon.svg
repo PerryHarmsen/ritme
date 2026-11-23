@@ -1,0 +1,15 @@
+<svg viewBox="0 0 512 512" width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%"><stop offset="0" stop-color="#0E1A33"/><stop offset=".55" stop-color="#05080F"/><stop offset="1" stop-color="#000"/></radialGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="22"/></filter>
+    <linearGradient id="va" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#123C9C"/><stop offset=".45" stop-color="#2B7BFF"/><stop offset="1" stop-color="#8FD0FF"/></linearGradient>
+    <linearGradient id="vb" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#A9DBFF"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(256 262) scale(.9) translate(-256 -259)">
+    <ellipse cx="256" cy="300" rx="150" ry="160" fill="#2B7BFF" opacity=".45" filter="url(#blur)"/>
+    <path d="M256 62 C 292 140, 392 196, 392 316 C 392 402, 330 456, 256 456 C 182 456, 120 402, 120 316 C 120 250, 158 208, 186 166 C 196 214, 220 238, 246 246 C 230 184, 234 118, 256 62 Z" fill="url(#va)"/>
+    <path d="M150 300 C 160 240, 196 214, 210 190" stroke="#BFE6FF" stroke-width="10" stroke-linecap="round" fill="none" opacity=".35"/>
+    <path d="M258 240 C 290 286, 330 314, 330 368 C 330 412, 298 440, 256 440 C 214 440, 184 412, 184 370 C 184 334, 208 312, 222 286 C 232 314, 246 322, 258 324 C 250 300, 248 270, 258 240 Z" fill="url(#vb)"/>
+  </g>
+</svg>
